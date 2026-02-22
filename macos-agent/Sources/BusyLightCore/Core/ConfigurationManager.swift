@@ -44,6 +44,13 @@ public class ConfigurationManager {
             configuration.showMenuBarText = userDefaults.bool(forKey: AppConfiguration.CodingKeys.showMenuBarText.rawValue)
         }
         
+        // State machine settings
+        if let timeout = userDefaults.object(forKey: AppConfiguration.CodingKeys.manualOverrideTimeoutMinutes.rawValue) as? Int {
+            configuration.manualOverrideTimeoutMinutes = timeout == -1 ? nil : timeout
+        }
+        
+        configuration.stateStabilizationSeconds = userDefaults.integer(forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
+        
         configLogger.logEvent("Configuration loaded successfully",
                             details: ["presenceState": configuration.presenceState.rawValue,
                                     "deviceAddress": configuration.deviceNetworkAddress.isEmpty ? "(not set)" : configuration.deviceNetworkAddress])
@@ -59,6 +66,11 @@ public class ConfigurationManager {
         userDefaults.set(configuration.deviceNetworkPort, forKey: AppConfiguration.CodingKeys.deviceNetworkPort.rawValue)
         userDefaults.set(configuration.launchOnStartup, forKey: AppConfiguration.CodingKeys.launchOnStartup.rawValue)
         userDefaults.set(configuration.showMenuBarText, forKey: AppConfiguration.CodingKeys.showMenuBarText.rawValue)
+        
+        // State machine settings (use -1 to represent nil for timeout)
+        let timeoutValue = configuration.manualOverrideTimeoutMinutes ?? -1
+        userDefaults.set(timeoutValue, forKey: AppConfiguration.CodingKeys.manualOverrideTimeoutMinutes.rawValue)
+        userDefaults.set(configuration.stateStabilizationSeconds, forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
         
         userDefaults.synchronize()
         configLogger.logEvent("Configuration saved")
@@ -104,6 +116,26 @@ public class ConfigurationManager {
     
     public func getShowMenuBarText() -> Bool {
         return configuration.showMenuBarText
+    }
+    
+    // MARK: - State Machine Configuration
+    
+    public func getManualOverrideTimeoutMinutes() -> Int? {
+        return configuration.manualOverrideTimeoutMinutes
+    }
+    
+    public func setManualOverrideTimeoutMinutes(_ minutes: Int?) {
+        configuration.manualOverrideTimeoutMinutes = minutes
+        saveConfiguration()
+    }
+    
+    public func getStateStabilizationSeconds() -> Int {
+        return configuration.stateStabilizationSeconds
+    }
+    
+    public func setStateStabilizationSeconds(_ seconds: Int) {
+        configuration.stateStabilizationSeconds = seconds
+        saveConfiguration()
     }
     
     public func setShowMenuBarText(_ show: Bool) {

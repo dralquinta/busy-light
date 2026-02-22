@@ -60,26 +60,82 @@ Sources/BusyLight/
 ├── main.swift              # Application entry point
 ├── AppDelegate.swift       # Lifecycle management
 ├── Models/
-│   ├── PresenceState.swift      # Available, Busy, Away
+│   ├── PresenceState.swift      # Available, Busy, Away, Tentative, Unknown
 │   ├── DeviceStatus.swift       # Device connection state
 │   └── AppConfiguration.swift   # Persistent settings
 ├── Core/
 │   ├── Logger.swift             # Structured logging via os_log
 │   └── ConfigurationManager.swift # UserDefaults persistence
+├── State/
+│   ├── PresenceStateMachine.swift   # State transition coordinator
+│   ├── StateEvent.swift             # Input events
+│   ├── StateSource.swift            # Source tracking (calendar/manual/system)
+│   ├── StateTransition.swift        # Validation rules
+│   └── OperatingMode.swift          # Auto vs manual mode
+├── Calendar/
+│   ├── CalendarEngine.swift         # EventKit integration
+│   ├── CalendarScanner.swift        # Event polling
+│   └── CalendarAvailabilityResolver.swift # Priority resolution
+├── System/
+│   └── SystemPresenceMonitor.swift  # Screen lock/sleep detection
 └── UI/
     └── StatusMenuController.swift # Menu bar icon and menu
 ```
+
+## State Machine
+
+The BusyLight agent uses a centralized state machine to coordinate presence state from multiple sources:
+
+### Operating Modes
+- **Auto Mode** (default): Presence state automatically resolves from calendar events
+- **Manual Mode**: User override active, calendar updates ignored until resumed
+
+### State Precedence
+```
+System Away (Highest)  ─►  Screen lock/sleep always overrides everything
+      │
+      ▼
+Manual Override        ─►  User toggle blocks calendar updates
+      │
+      ▼
+Calendar Events        ─►  Automatic resolution in auto mode
+```
+
+### Configuration Options
+
+**Manual Override Timeout** (`app.manual_override_timeout`):
+- Default: `120` minutes (2 hours)
+- Set to `-1` for no timeout (indefinite override)
+- Automatically resumes calendar control when expired
+
+**State Stabilization Delay** (`app.state_stabilization`):
+- Default: `0` seconds (disabled)
+- Adds delay before state transitions to prevent rapid oscillation
+- Useful at calendar event boundaries
+
+### Key Features
+- **Deterministic transitions**: All state changes validated and logged
+- **Override precedence**: System > Manual > Calendar
+- **Debounce logic**: Prevents redundant transitions and flapping
+- **Timeout support**: Optional auto-resume from manual overrides
+- **Thread-safe**: @MainActor isolation ensures serialized updates
+
+📖 **Detailed documentation**: [State/README.md](Sources/BusyLightCore/State/README.md)
+
+---
 
 ## Configuration
 
 Settings are stored in `UserDefaults` under the suite `com.busylight.agent`. Configuration auto-loads on startup.
 
 **Persistent Settings:**
-- `app.presence_state`: Current presence mode (available/busy/away)
+- `app.presence_state`: Current presence mode (available/busy/away/tentative/unknown)
 - `app.device_network_address`: Device host/IP for REST/WebSocket
 - `app.device_network_port`: Device communication port (default: 8080)
 - `app.launch_on_startup`: Enable login item (not yet implemented)
 - `app.show_menu_bar_text`: Display presence state in menu bar
+- `app.manual_override_timeout`: Manual override timeout in minutes (default: 120, -1 = none)
+- `app.state_stabilization`: State stabilization delay in seconds (default: 0)
 
 ## Logging
 

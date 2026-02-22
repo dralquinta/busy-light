@@ -19,7 +19,12 @@ The application will launch and display an icon in your menu bar. See [macos-age
 
 ## Documentation
 
+### Architecture & Design
 - **[macOS Presence Agent — Menu Bar Skeleton](docs/macOS-presence-agent-menuskeleton.md)** — Complete implementation guide, architecture, build workflow, concurrency design, and testing strategy (February 2026)
+- **[State Machine Architecture](docs/state-machine.md)** — Hierarchical state machine coordinating presence across calendar, manual overrides, and system events. Modes, transitions, priority rules, and configuration options.
+
+### Integration Guides
+- **[EventKit Calendar Integration](docs/eventkit-calendar-integration.md)** — Calendar event scanning, permission handling, and availability resolution logic
 
 ## Design Philosophy
 

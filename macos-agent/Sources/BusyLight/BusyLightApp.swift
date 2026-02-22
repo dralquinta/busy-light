@@ -7,6 +7,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     private var statusMenuController: StatusMenuController?
     private var calendarEngine: CalendarEngine?
     private var systemMonitor: SystemPresenceMonitor?
+    private var stateMachine: PresenceStateMachine?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         lifecycleLogger.logEvent("Application launched")
@@ -25,16 +26,67 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
 
         uiLogger.logEvent("Menu bar icon displayed")
 
-        // Start the calendar engine and wire its output to the UI.
+        // Initialize the state machine with configuration settings
+        let machine = PresenceStateMachine(initialState: .unknown, initialMode: .auto)
+        machine.manualOverrideTimeoutMinutes = ConfigurationManager.shared.getManualOverrideTimeoutMinutes()
+        machine.stateStabilizationSeconds = ConfigurationManager.shared.getStateStabilizationSeconds()
+        stateMachine = machine
+        lifecycleLogger.logEvent("State machine initialized")
+        
+        // Wire state machine callbacks to UI
+        machine.onStateChanged = { [weak controller] state, source in
+            controller?.updatePresenceState(state)
+
+            // Update calendar status label when calendar or startup drives state.
+            // Skip .off — that label is already set by updateModeDisplay(.off).
+            if source == .calendar || source == .startup, state != .off {
+                if state == .available {
+                    controller?.setCalendarEngineStatus("Active")
+                } else if state == .unknown {
+                    controller?.setCalendarEngineStatus("Starting…")
+                } else {
+                    controller?.setCalendarEngineStatus("\(state.displayName) ●")
+                }
+            }
+        }
+        
+        machine.onModeChanged = { [weak controller] mode in
+            controller?.updateModeDisplay(mode)
+        }
+
+        // Start the calendar engine and wire its output to the state machine.
         let engine = CalendarEngine()
         calendarEngine = engine
 
-        engine.onAvailabilityChange = { [weak controller] state in
-            controller?.applyCalendarState(state)
+        engine.onAvailabilityChange = { [weak machine] state in
+            machine?.handleEvent(.calendarUpdated(state))
+        }
+        
+        // Wire state machine callback to trigger calendar sync
+        machine.onRequestCalendarSync = { [weak engine] in
+            Task { await engine?.scanNow() }
         }
 
-        controller.onResumeCalendarControl = { [weak engine] in
-            Task { await engine?.scanNow() }
+        controller.onResumeCalendarControl = { [weak machine] in
+            machine?.handleEvent(.resumeAuto)
+        }
+        
+        controller.onManualOverride = { [weak machine] state in
+            machine?.handleEvent(.manualOverride(state))
+        }
+
+        controller.onTurnOff = { [weak machine] in
+            machine?.handleEvent(.turnOff)
+        }
+
+        controller.onTimeoutChanged = { [weak machine] minutes in
+            // Persist to UserDefaults
+            ConfigurationManager.shared.setManualOverrideTimeoutMinutes(minutes)
+            // Apply immediately to the running state machine
+            machine?.manualOverrideTimeoutMinutes = minutes
+            lifecycleLogger.logEvent("override.timeout.updated", details: [
+                "minutes": minutes.map { String($0) } ?? "never"
+            ])
         }
 
         controller.setCalendarEngineStatus("Starting…")
@@ -51,17 +103,16 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             // If state != .available, applyCalendarState already set the label.
         }
 
-        // Start the system presence monitor so screen lock → 🟡 away.
+        // Start the system presence monitor so screen lock → away.
         let monitor = SystemPresenceMonitor()
         systemMonitor = monitor
 
-        monitor.onUserAway = { [weak controller] in
-            controller?.applyAwayState()
+        monitor.onUserAway = { [weak machine] in
+            machine?.handleEvent(.systemAway)
         }
 
-        monitor.onUserReturned = { [weak controller, weak engine] in
-            controller?.clearAwayState()
-            Task { await engine?.scanNow() }
+        monitor.onUserReturned = { [weak machine] in
+            machine?.handleEvent(.systemReturned)
         }
 
         controller.onSimulateAway = { [weak monitor] in
@@ -78,6 +129,9 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
 
         monitor.start()
         lifecycleLogger.logEvent("System presence monitor started")
+        
+        // Initialize state machine
+        machine.handleEvent(.startupInitialize)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

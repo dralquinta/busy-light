@@ -8,6 +8,12 @@ public struct AppConfiguration: Codable, Sendable {
     public var launchOnStartup: Bool = false
     public var showMenuBarText: Bool = true
     
+    // State machine configuration
+    /// Manual override timeout in minutes (nil = no timeout, default 120 minutes)
+    public var manualOverrideTimeoutMinutes: Int? = 120
+    /// State stabilization delay in seconds to prevent flapping (default 0 = disabled)
+    public var stateStabilizationSeconds: Int = 0
+    
     public static let defaultConfiguration = AppConfiguration()
     
     public init() {}
@@ -18,5 +24,7 @@ public struct AppConfiguration: Codable, Sendable {
         case deviceNetworkPort = "app.device_network_port"
         case launchOnStartup = "app.launch_on_startup"
         case showMenuBarText = "app.show_menu_bar_text"
+        case manualOverrideTimeoutMinutes = "app.manual_override_timeout"
+        case stateStabilizationSeconds = "app.state_stabilization"
     }
 }
