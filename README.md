@@ -89,6 +89,9 @@ Key WLED topics you will need to understand:
 
 ## Architecture Overview
 
+
+![Architecture Diagram](img/arch-diag.png)
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      macOS Agent                             │
