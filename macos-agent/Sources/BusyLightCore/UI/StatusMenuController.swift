@@ -22,6 +22,15 @@ public class StatusMenuController {
     /// Called when the user taps "Resume Calendar Control" so the app can
     /// trigger an immediate calendar rescan.
     public var onResumeCalendarControl: (@MainActor () -> Void)?
+
+    /// Called when the user taps "Simulate Away" in the debug menu.
+    public var onSimulateAway: (@MainActor () -> Void)?
+
+    /// Called when the user taps "Simulate Return" in the debug menu.
+    public var onSimulateReturn: (@MainActor () -> Void)?
+
+    /// Called when the user taps "Scan Calendar Now" in the debug menu.
+    public var onScanNow: (@MainActor () -> Void)?
     
     public init() {
         // Create status bar item
@@ -70,8 +79,32 @@ public class StatusMenuController {
         menu.addItem(calendarStatusItem!)
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Preferences (placeholder for future)
+
+        // Debug submenu — helps verify away/return transitions without locking
+        let debugMenu = NSMenu(title: "Debug")
+
+        let scanNowItem = NSMenuItem(title: "Scan Calendar Now",
+                                     action: #selector(scanCalendarNow), keyEquivalent: "")
+        scanNowItem.target = self
+        debugMenu.addItem(scanNowItem)
+
+        debugMenu.addItem(NSMenuItem.separator())
+
+        let simulateAwayItem = NSMenuItem(title: "Simulate Screen Lock (Away)",
+                                          action: #selector(simulateAway), keyEquivalent: "")
+        simulateAwayItem.target = self
+        debugMenu.addItem(simulateAwayItem)
+
+        let simulateReturnItem = NSMenuItem(title: "Simulate Screen Unlock (Return)",
+                                            action: #selector(simulateReturn), keyEquivalent: "")
+        simulateReturnItem.target = self
+        debugMenu.addItem(simulateReturnItem)
+
+        let debugParent = NSMenuItem(title: "Debug", action: nil, keyEquivalent: "")
+        debugParent.submenu = debugMenu
+        menu.addItem(debugParent)
+
+        menu.addItem(NSMenuItem.separator())
         let preferencesItem = NSMenuItem(title: "Preferences", action: #selector(openPreferences), keyEquivalent: ",")
         preferencesItem.target = self
         menu.addItem(preferencesItem)
@@ -166,7 +199,7 @@ public class StatusMenuController {
         case .busy:
             button.title = "🔴"  // Red for busy
         case .away:
-            button.title = "🟡"  // Yellow for away
+            button.title = "⚪"  // Gray/white for away (absent)
         case .tentative:
             button.title = "🟠"  // Orange for tentative
         }
@@ -201,6 +234,20 @@ public class StatusMenuController {
         uiLogger.logEvent("calendar.control.resumed", details: ["source": "manual"])
     }
     
+    @objc private func simulateAway() {
+        onSimulateAway?()
+    }
+
+    @objc private func simulateReturn() {
+        onSimulateReturn?()
+    }
+
+    @objc private func scanCalendarNow() {
+        calendarStatusItem?.title = "Calendar: Scanning…"
+        onScanNow?()
+        uiLogger.logEvent("calendar.scan.manual", details: ["source": "debug_menu"])
+    }
+
     @objc private func openPreferences() {
         uiLogger.logEvent("Preferences requested (not yet implemented)")
         // Placeholder for future preferences window

@@ -47,11 +47,26 @@ public final class SystemPresenceMonitor {
         let ws  = NSWorkspace.shared.notificationCenter
         let dnc = DistributedNotificationCenter.default()
 
-        // Screen lock / unlock are posted to DistributedNotificationCenter.
-        let lockName   = NSNotification.Name("com.apple.screenIsLocked")
-        let unlockName = NSNotification.Name("com.apple.screenIsUnlocked")
+        // --- PRIMARY: display-sleep / wake (works from any process, including
+        //     SPM binaries that are not bundled as a .app).
+        // screensDidSleepNotification fires when the display turns off, which
+        // happens both on manual screen-lock (⌃⌘Q) and on Energy Saver sleep.
+        observers.append(
+            ws.addObserver(forName: NSWorkspace.screensDidSleepNotification,
+                           object: nil, queue: .main) { [weak self] note in
+                let trigger = note.name.rawValue
+                Task { @MainActor [weak self] in self?.handleAway(trigger: trigger) }
+            }
+        )
+        observers.append(
+            ws.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                           object: nil, queue: .main) { [weak self] note in
+                let trigger = note.name.rawValue
+                Task { @MainActor [weak self] in self?.handleReturn(trigger: trigger) }
+            }
+        )
 
-        // System sleep / wake come through the workspace notification center.
+        // --- SECONDARY: system sleep / wake.
         observers.append(
             ws.addObserver(forName: NSWorkspace.willSleepNotification,
                            object: nil, queue: .main) { [weak self] note in
@@ -66,6 +81,13 @@ public final class SystemPresenceMonitor {
                 Task { @MainActor [weak self] in self?.handleReturn(trigger: trigger) }
             }
         )
+
+        // --- TERTIARY: explicit screen-lock string notifications via
+        //     DistributedNotificationCenter.  These only fire reliably inside
+        //     a sandboxed .app bundle on macOS 14+, so they are a best-effort
+        //     supplement to the screen-sleep triggers above.
+        let lockName   = NSNotification.Name("com.apple.screenIsLocked")
+        let unlockName = NSNotification.Name("com.apple.screenIsUnlocked")
         observers.append(
             dnc.addObserver(forName: lockName, object: nil, queue: .main) { [weak self] note in
                 let trigger = note.name.rawValue
@@ -100,16 +122,29 @@ public final class SystemPresenceMonitor {
     // MARK: - Handlers
 
     private func handleAway(trigger: String) {
-        guard isAwake else { return }   // de-duplicate sleep → lock sequences
+        guard isAwake else { return }   // de-duplicate: multiple away triggers fire in sequence
         isAwake = false
         logger.logEvent("system.presence.away", details: ["trigger": trigger])
         onUserAway?()
     }
 
     private func handleReturn(trigger: String) {
-        guard !isAwake else { return }  // de-duplicate wake → unlock sequences
+        guard !isAwake else { return }  // de-duplicate: multiple return triggers fire in sequence
         isAwake = true
         logger.logEvent("system.presence.returned", details: ["trigger": trigger])
         onUserReturned?()
+    }
+
+    // MARK: - Testing
+
+    /// Forces the away state immediately.  Use from a debug menu item to verify
+    /// the yellow-light flow without locking the screen.
+    public func simulateAway() {
+        handleAway(trigger: "simulated")
+    }
+
+    /// Forces the return state immediately.  Pair with `simulateAway()` in tests.
+    public func simulateReturn() {
+        handleReturn(trigger: "simulated")
     }
 }

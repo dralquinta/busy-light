@@ -118,6 +118,30 @@ public final class CalendarScanner {
             "duration_ms": String(durationMs)
         ])
 
+        // Log each overlapping event's availability so misconfigured external
+        // calendars (Google CalDAV, Outlook Exchange) can be diagnosed.
+        for event in events {
+            logger.logEvent("calendar.event.found", details: [
+                "title":        event.title ?? "(untitled)",
+                "availability": availabilityLabel(event.availability),
+                "start":        ISO8601DateFormatter().string(from: event.startDate),
+                "end":          ISO8601DateFormatter().string(from: event.endDate)
+            ])
+        }
+
         return events
+    }
+
+    // MARK: - Helpers
+
+    private func availabilityLabel(_ av: EKEventAvailability) -> String {
+        switch av {
+        case .busy:         return "busy"
+        case .free:         return "free"
+        case .tentative:    return "tentative"
+        case .unavailable:  return "unavailable"
+        case .notSupported: return "notSupported"
+        @unknown default:   return "unknown(\(av.rawValue))"
+        }
     }
 }

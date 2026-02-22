@@ -5,9 +5,16 @@ import EventKit
 /// the current moment into a `PresenceState`.
 ///
 /// Priority (highest → lowest):
-/// 1. **busy** — at least one event with `.busy` or `.unavailable` availability
+/// 1. **busy** — at least one event with `.busy`, `.unavailable`, or
+///    `.notSupported` availability
 /// 2. **tentative** — at least one event with `.tentative` availability; no busy events
 /// 3. **available** — no overlapping events, or all overlapping events are `.free`
+///
+/// ## Why `.notSupported` is treated as busy
+/// Google Calendar (CalDAV) and Outlook (Exchange) events frequently arrive in
+/// EventKit without the TRANSP / FREEBUSY property set. EventKit maps this
+/// absence to `.notSupported`. Because the user explicitly created a time block,
+/// the safe default is to treat it as busy rather than silently ignore it.
 ///
 /// The resolver contains no side-effects and can be tested in isolation.
 public struct CalendarAvailabilityResolver {
@@ -41,12 +48,18 @@ public struct CalendarAvailabilityResolver {
             switch event.availability {
             case .busy, .unavailable:
                 hasBusy = true
+            case .notSupported:
+                // Google Calendar (CalDAV) and Outlook (Exchange) events often
+                // have no TRANSP/FREEBUSY property, which EventKit maps to
+                // .notSupported.  Treat as busy: the user blocked this time.
+                hasBusy = true
             case .tentative:
                 hasTentative = true
-            case .free, .notSupported:
-                break   // does not affect availability
+            case .free:
+                break   // explicitly marked free — does not affect availability
             @unknown default:
-                break
+                // Unknown future cases: err on the side of marking busy.
+                hasBusy = true
             }
         }
 

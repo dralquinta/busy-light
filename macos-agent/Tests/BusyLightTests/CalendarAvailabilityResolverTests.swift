@@ -187,10 +187,10 @@ struct CalendarAvailabilityResolverTests {
         #expect(state == .busy)
     }
 
-    @Test("notSupported availability does not affect resolved state")
-    func notSupportedAvailabilityIsNeutral() {
+    @Test(".notSupported availability (Google CalDAV / Outlook Exchange) resolves to busy")
+    func notSupportedAvailabilityIsBusy() {
         let ns = MockCalendarEvent.make(availability: .notSupported, anchor: now)
         let state = resolver.resolve(events: [ns], at: now)
-        #expect(state == .available)
+        #expect(state == .busy)
     }
 }

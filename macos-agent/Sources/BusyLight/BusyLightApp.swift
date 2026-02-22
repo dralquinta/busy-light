@@ -64,6 +64,18 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             Task { await engine?.scanNow() }
         }
 
+        controller.onSimulateAway = { [weak monitor] in
+            monitor?.simulateAway()
+        }
+
+        controller.onSimulateReturn = { [weak monitor] in
+            monitor?.simulateReturn()
+        }
+
+        controller.onScanNow = { [weak engine] in
+            Task { await engine?.scanNow() }
+        }
+
         monitor.start()
         lifecycleLogger.logEvent("System presence monitor started")
     }
