@@ -43,6 +43,30 @@ do_build() {
         swift build
     fi
     log "Build succeeded → $AGENT_DIR/.build/$cfg/BusyLight"
+    do_bundle "$cfg"
+}
+
+# Assembles a proper .app bundle so macOS TCC shows the calendar permission
+# prompt.  Without a bundle + embedded Info.plist the system silently denies
+# calendar access and never presents a dialog.
+do_bundle() {
+    local cfg="$1"
+    local binary="$AGENT_DIR/.build/$cfg/BusyLight"
+    local bundle="$SCRIPT_DIR/BusyLight.app"
+    local plist="$AGENT_DIR/Sources/BusyLight/Resources/Info.plist"
+
+    log "Assembling ${bundle}..."
+    rm -rf "$bundle"
+    mkdir -p "$bundle/Contents/MacOS"
+    cp "$binary" "$bundle/Contents/MacOS/BusyLight"
+    cp "$plist"   "$bundle/Contents/Info.plist"
+
+    # Ad-hoc codesign so Gatekeeper and TCC accept the bundle.
+    codesign --force --deep --sign - "$bundle" 2>/dev/null && \
+        log "Ad-hoc codesign applied." || \
+        log "codesign skipped (not critical for local dev)."
+
+    log "Bundle ready -> ${bundle}"
 }
 
 do_test() {
@@ -62,6 +86,7 @@ do_clean() {
     log "Cleaning build artefacts…"
     cd "$AGENT_DIR"
     rm -rf .build
+    rm -rf "$SCRIPT_DIR/BusyLight.app"
     log "Clean complete."
 }
 
