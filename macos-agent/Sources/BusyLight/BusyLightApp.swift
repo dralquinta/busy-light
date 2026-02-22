@@ -10,6 +10,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     private var systemMonitor: SystemPresenceMonitor?
     private var hotkeyManager: HotkeyManager?
     private var stateMachine: PresenceStateMachine?
+    private var networkClient: NetworkClient?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         lifecycleLogger.logEvent("Application launched")
@@ -39,7 +40,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         lifecycleLogger.logEvent("State machine initialized")
         
         // Wire state machine callbacks to UI
-        machine.onStateChanged = { [weak controller] state, source in
+        machine.onStateChanged = { [weak controller, weak self] state, source in
             controller?.updatePresenceState(state)
 
             // Update calendar status label when calendar or startup drives state.
@@ -52,6 +53,11 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
                 } else {
                     controller?.setCalendarEngineStatus("\(state.displayName) ●")
                 }
+            }
+            
+            // Send state to WLED devices
+            Task {
+                await self?.networkClient?.sendState(state)
             }
         }
         
@@ -169,6 +175,22 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         hotkeyMgr.start()
         lifecycleLogger.logEvent("Hotkey manager started")
         
+        // Initialize network client for WLED communication
+        let client = NetworkClient(config: ConfigurationManager.shared)
+        networkClient = client
+        
+        // Wire network client callback to update UI with device statuses
+        client.onDeviceStatusChanged = { [weak controller] devices in
+            controller?.updateDeviceList(devices)
+        }
+        
+        // Connect to WLED devices and start health monitoring
+        Task {
+            await client.connect()
+            client.startHealthMonitoring()
+            lifecycleLogger.logEvent("Network client initialized and connected")
+        }
+        
         // Wire debug info callback
         controller.onShowHotkeyDebugInfo = { [weak hotkeyMgr] in
             guard hotkeyMgr != nil else { return "HotkeyManager not available" }
@@ -190,6 +212,8 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         systemMonitor?.stop()
         hotkeyManager?.stop()
         calendarEngine?.stop()
+        networkClient?.stopHealthMonitoring()
+        networkClient?.disconnect()
         lifecycleLogger.logEvent("Monitors stopped")
 
         // Ensure configuration is saved

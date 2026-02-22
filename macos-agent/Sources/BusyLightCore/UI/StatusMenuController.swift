@@ -308,6 +308,46 @@ public class StatusMenuController {
 
         uiLogger.logEvent("Device status updated", details: ["state": status.connectionState.rawValue])
     }
+    
+    /// Updates device status display for multiple WLED devices.
+    public func updateDeviceList(_ devices: [WLEDDevice]) {
+        let onlineCount = devices.filter { $0.isOnline }.count
+        let offlineCount = devices.count - onlineCount
+        
+        let statusText: String
+        if devices.isEmpty {
+            statusText = "Devices: None configured"
+        } else if offlineCount == 0 {
+            statusText = "Devices: \(onlineCount) online ●"
+        } else if onlineCount == 0 {
+            statusText = "Devices: All offline"
+        } else {
+            statusText = "Devices: \(onlineCount) online, \(offlineCount) offline"
+        }
+        
+        deviceStatusItem?.title = statusText
+        
+        // Build tooltip with individual device details
+        var tooltip = "WLED Devices:\n"
+        if devices.isEmpty {
+            tooltip += "  No devices configured\n"
+            tooltip += "  Configure via UserDefaults or enable discovery"
+        } else {
+            for device in devices {
+                let status = device.isOnline ? "●" : "○"
+                let name = device.name ?? device.address
+                tooltip += "  \(status) \(name) (\(device.address):\(device.port))\n"
+            }
+        }
+        
+        deviceStatusItem?.toolTip = tooltip
+        
+        uiLogger.logEvent("Device list updated", details: [
+            "total": String(devices.count),
+            "online": String(onlineCount),
+            "offline": String(offlineCount)
+        ])
+    }
 
     private func updateMenuAppearance() {
         let config = ConfigurationManager.shared

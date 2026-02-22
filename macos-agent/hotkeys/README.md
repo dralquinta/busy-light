@@ -29,29 +29,36 @@ BusyLight uses **function keys F13–F17** by default, mapped as follows:
 Stream Deck buttons can emit hotkeys that BusyLight listens for. No special drivers or plugins required—just configure Stream Deck to emit the function key.
 
 ### How to configure Stream Deck
+### How to configure Stream Deck
 
-1. **Open Stream Deck application** (Version 3.10.198.0201+)
-2. **Create a new button** or edit an existing one
-3. **Set button action**: 
-   - Search for or select **"Hotkey"** action
-   - Configure the hotkey to emit:
-     - **F13** for Available
-     - **F14** for Tentative
-     - **F15** for Busy
-     - **F16** for Away
-     - **F17** for Off
-4. **Assign to physical button** on your Stream Deck or dock
-5. **Test**: Press the button; BusyLight presence should update within 100 ms
+1. Open the Stream Deck application (version 3.10.198.0201+).  
+2. Create a new button or edit an existing one.  
+3. Set the button action:
+       - choose the **Hotkey** action,
+       - configure the hotkey to emit:
 
-**Example Stream Deck profile layout**:
+         | State     | Hotkey                        |
+         |-----------|-------------------------------|
+         | Available | Left Ctrl + Left Cmd + 1      |
+         | Tentative | Left Ctrl + Left Cmd + 2      |
+         | Busy      | Left Ctrl + Left Cmd + 3      |
+         | Away      | Left Ctrl + Left Cmd + 4      |
+         | Off       | Left Ctrl + Left Cmd + 5      |
+         | Toggle    | Left Ctrl + Left Cmd + 6      |
+
+4. Assign the action to a physical button on your Stream Deck or dock.  
+5. Test: press the button; BusyLight presence should update within 100 ms.
+
+**Example Stream Deck profile layout:**
+
 ```
-┌─────────────┬─────────────┬─────────────┐
-│   F13       │   F14       │   F15       │
-│ Available   │ Tentative   │   Busy      │
-├─────────────┼─────────────┼─────────────┤
-│   F16       │   F17       │             │
-│   Away      │     Off     │             │
-└─────────────┴─────────────┴─────────────┘
+┌──────────────────┬──────────────────┬──────────────────┐
+│ Ctrl+Cmd+1       │ Ctrl+Cmd+2       │ Ctrl+Cmd+3       │
+│   Available      │   Tentative      │      Busy        │
+├──────────────────┼──────────────────┼──────────────────┤
+│ Ctrl+Cmd+4       │ Ctrl+Cmd+5       │ Ctrl+Cmd+6       │
+│      Away        │       Off        │      Toggle      │
+└──────────────────┴──────────────────┴──────────────────┘
 ```
 
 ---
@@ -84,17 +91,8 @@ defaults write com.busylight.agent 'app.hotkey_bindings' -dict \
 defaults delete com.busylight.agent 'app.hotkey_bindings'
 ```
 
-**Carbon virtual key codes for function keys**:
-| Key | Code |
-|-----|------|
-| F13 | 105  |
-| F14 | 107  |
-| F15 | 113  |
-| F16 | 106  |
-| F17 | 64   |
-| F18 | 79   |
-| F19 | 80   |
-| F20 | 90   |
+
+The content is useful for the "Advanced: Custom Hotkey Bindings" section. Here's an updated version with current Carbon virtual key codes:
 
 ---
 
