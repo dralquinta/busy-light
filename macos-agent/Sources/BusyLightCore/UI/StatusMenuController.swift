@@ -43,15 +43,9 @@ public class StatusMenuController {
 
     /// Called when the user wants to see hotkey debug information
     public var onShowHotkeyDebugInfo: (@MainActor () -> String)?
-    
-    /// Called when the user saves hotkey preference bindings
-    public var onHotkeyPreferencesSaved: (@MainActor ([PresenceState: UInt16]) -> Void)?
 
     /// Items in the Override Timeout submenu — kept for checkmark updates.
     private var timeoutMenuItems: [NSMenuItem] = []
-    
-    /// Hotkey preferences window controller (held to keep it in memory while open)
-    private var hotkeyPreferencesController: HotkeyPreferencesController?
 
     /// Timeout options shown in the menu: (label, minutes — nil means never)
     private let timeoutOptions: [(label: String, minutes: Int?)] = [
@@ -134,38 +128,6 @@ public class StatusMenuController {
         let timeoutParent = NSMenuItem(title: "Override Timeout", action: nil, keyEquivalent: "")
         timeoutParent.submenu = timeoutMenu
         menu.addItem(timeoutParent)
-
-        menu.addItem(NSMenuItem.separator())
-        
-        // Configure Hotkeys submenu - displays current bindings
-        let hotkeysMenu = NSMenu(title: "Configure Hotkeys")
-        let hotkeyBindings = ConfigurationManager.shared.getHotkeyBindings()
-        
-        for state in [PresenceState.available, .tentative, .busy, .away, .off] {
-            let keyCode = hotkeyBindings[state] ?? 0
-            let keyName = functionKeyName(for: keyCode)
-            let item = NSMenuItem(
-                title: "\(state.displayName): \(keyName)",
-                action: #selector(openHotkeysPreferences),
-                keyEquivalent: ""
-            )
-            item.target = self
-            hotkeysMenu.addItem(item)
-        }
-        
-        hotkeysMenu.addItem(NSMenuItem.separator())
-        
-        let hotkeysInfoItem = NSMenuItem(
-            title: "Edit preferences for custom bindings",
-            action: #selector(openHotkeysPreferences),
-            keyEquivalent: ""
-        )
-        hotkeysInfoItem.target = self
-        hotkeysMenu.addItem(hotkeysInfoItem)
-        
-        let hotkeysParent = NSMenuItem(title: "Configure Hotkeys", action: nil, keyEquivalent: "")
-        hotkeysParent.submenu = hotkeysMenu
-        menu.addItem(hotkeysParent)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -436,22 +398,7 @@ public class StatusMenuController {
         uiLogger.logEvent("Preferences requested (not yet implemented)")
     }
 
-    @objc private func openHotkeysPreferences() {
-        uiLogger.logEvent("Hotkeys preferences requested")
-        
-        let currentBindings = ConfigurationManager.shared.getHotkeyBindings()
-        let preferencesController = HotkeyPreferencesController(currentBindings: currentBindings)
-        
-        // Handle bindings saved
-        preferencesController.onBindingsSaved = { [weak self] newBindings in
-            self?.onHotkeyPreferencesSaved?(newBindings)
-        }
-        
-        // Keep reference to prevent garbage collection
-        self.hotkeyPreferencesController = preferencesController
-        
-        preferencesController.showWindow()
-    }
+
 
     @objc private func showHotkeyDebugInfo() {
         guard let debugInfo = onShowHotkeyDebugInfo?() else {
@@ -477,28 +424,5 @@ public class StatusMenuController {
         NSApplication.shared.terminate(nil)
     }
     
-    // MARK: - Hotkey Helpers
-    
-    /// Converts a Carbon virtual key code to a human-readable function key name.
-    private func functionKeyName(for keyCode: UInt16) -> String {
-        switch keyCode {
-        case 105: return "F13"   // Available
-        case 107: return "F14"   // Tentative
-        case 113: return "F15"   // Busy
-        case 106: return "F16"   // Away
-        case 64:  return "F17"   // Off
-        case 79:  return "F18"
-        case 80:  return "F19"
-        case 90:  return "F20"
-        default:  return "Unknown (code: \(keyCode))"
-        }
-    }
-    
-    /// Updates the hotkey bindings display in the menu.
-    /// Called when hotkey configuration changes.
-    public func refreshHotkeysDisplay() {
-        uiLogger.logEvent("Hotkeys display refreshed")
-        // Note: Full menu refresh would require restructuring the menu setup.
-        // For now, this is called when bindings change to signal UI update.
-    }
+
 }

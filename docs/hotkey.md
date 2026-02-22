@@ -11,20 +11,33 @@ BusyLight supports global hotkeys for quick presence state changes without openi
 
 Default key combinations require **Left Control + Left Command** held together with a number key:
 
-| Combination | Presence State | Key Code | Description |
+| Combination | Action | Key Code | Description |
 |---|---|---|---|
 | **Ctrl+Cmd+1** | Available | 18 | Sets availability to free/available |
 | **Ctrl+Cmd+2** | Tentative | 19 | Sets status to tentatively booked |
 | **Ctrl+Cmd+3** | Busy | 20 | Sets status to busy/do not disturb |
 | **Ctrl+Cmd+4** | (Resume Calendar) | 21 | Cancels override, resumes calendar control |
-| **F16** | Away | 106 | Sets status to away/offline |
-| **F17** | Off | 64 | Turns off the light (pauses all monitoring) |
+| **Ctrl+Cmd+5** | Turn Off | 23 | Turns off the light (pauses all monitoring) |
+| **Ctrl+Cmd+6** | Away | 22 | Sets status to away/offline |
 
-All bindings are fully customizable via the "Configure Hotkeys" menu (⚙︎ → Configure Hotkeys → Edit preferences).
+Hotkey bindings are hardcoded. To customize, edit `AppConfiguration.swift` and rebuild the application.
+
+## Backward Compatibility & Migration
+
+**Automatic Migration from Function Keys**
+
+If you're upgrading from an older version that used F13-F17 function keys:
+- The app automatically detects old function key bindings (key codes 105, 107, 113, 106, 64) in UserDefaults
+- On first launch, these are migrated to the new Ctrl+Cmd defaults (key codes 18, 19, 20, 22)
+- The migration is logged: `"Detected old function key bindings, resetting to new Ctrl+Cmd defaults"`
+- Migrated bindings are saved to UserDefaults, so migration only runs once
+- No manual intervention required
+
+**Code Reference**: [ConfigurationManager.swift](../macos-agent/Sources/BusyLightCore/Core/ConfigurationManager.swift) lines 54-67 (loadConfiguration) and lines 173-185 (resetHotkeysToDefaults)
 
 ## Behavior
 
-### When a Hotkey is Pressed (Ctrl+Cmd+1/2/3, F16, F17)
+### When a Hotkey is Pressed (Ctrl+Cmd+1/2/3/6 with 30-minute timeout)
 1. **Immediate state change** — Presence status changes to the mapped state within milliseconds
 2. **Override active** — Calendar synchronization pauses for the configured timeout duration (default: 30 minutes)
 3. **Menu bar updates** — BusyLight icon and status display update immediately
@@ -83,6 +96,8 @@ This hotkey is essential for:
 **Configuration & Persistence:**
 - `AppConfiguration.hotkeyBindings` — Dictionary mapping `PresenceState` to key codes (UInt16)
 - `ConfigurationManager.getHotkeyBindings()` / `setHotkeyBindings()` — UserDefaults I/O
+- `ConfigurationManager.resetHotkeysToDefaults()` — Migrates old function key bindings to Ctrl+Cmd defaults
+- `ConfigurationManager.loadConfiguration()` — Detects old bindings and triggers migration automatically
 - Persisted to `~/Library/Preferences/com.example.BusyLight.plist` under key `app.hotkey_bindings`
 
 **User Interface:**
@@ -110,11 +125,11 @@ if !hasControl || !hasCmd { skip() }  // Reject if either missing
 ```
 
 Currently applies to:
-- **Keys 1, 2, 3** (mapped in `hotkeyBindings` as PresenceState bindings) — Ctrl+Cmd+1/2/3 for Available, Tentative, Busy
+- **Keys 1, 2, 3, 6** (mapped in `hotkeyBindings` as PresenceState bindings) — Ctrl+Cmd+1/2/3/6 for Available, Tentative, Busy, Away
 - **Key 4** (Resume Calendar) — Ctrl+Cmd+4 for immediate calendar control resumption (checked separately in `handleKeyDown()` before the hotkeyBindings loop)
-- **Function keys (F16, F17)** — Don't require modifiers, work as standalone hotkeys
+- **Key 5** (Turn Off) — Ctrl+Cmd+5 for turning off the system (checked separately in `handleKeyDown()` before the hotkeyBindings loop)
 
-**Implementation Note**: Resume Calendar (key 21/Ctrl+Cmd+4) is verified with the same modifier checking as keys 1-3, but processed outside the `hotkeyBindings` loop since it's not a PresenceState mapping. This ensures consistent behavior across all Ctrl+Cmd combinations.
+**Implementation Note**: Resume Calendar (key 21/Ctrl+Cmd+4) and Turn Off (key 23/Ctrl+Cmd+5) are verified with the same modifier checking as keys 1-3-6, but processed outside the `hotkeyBindings` loop since they're not PresenceState mappings. This ensures consistent behavior across all Ctrl+Cmd combinations.
 
 ### Logging
 
@@ -184,7 +199,7 @@ Streams live logs to terminal with filter: `subsystem BEGINSWITH "com.busylight.
 4. **Grant Accessibility permission** when prompted
 5. **Grant Calendar permission** if asked
 6. **Close and reopen** the app using `./debug.sh`
-7. **Test hotkeys**: Press Ctrl+Cmd+1, Ctrl+Cmd+2, Ctrl+Cmd+3, F16, or F17
+7. **Test hotkeys**: Press Ctrl+Cmd+1, Ctrl+Cmd+2, Ctrl+Cmd+3, or Ctrl+Cmd+6
 
 ## Testing Hotkeys
 
@@ -218,30 +233,31 @@ Streams live logs to terminal with filter: `subsystem BEGINSWITH "com.busylight.
 - [ ] Ctrl+Cmd+3 sets status to Busy
 - [ ] Ctrl+Cmd+4 cancels override and returns to calendar status
 - [ ] **Ctrl+Cmd+4 has priority**: Press Ctrl+Cmd+1, then immediately press Ctrl+Cmd+4 before timeout expires → status should return to calendar value
+- [ ] Ctrl+Cmd+5 turns off the system
 - [ ] F16 sets status to Away
-- [ ] F17 sets status to Off
 - [ ] Status persists for exactly 30 minutes after hotkey press (1/2/3 only)
 - [ ] Status returns to calendar-based value after timeout
 - [ ] Pressing Ctrl+Cmd+4 during override immediately resumes calendar control (no timeout wait)
-- [ ] Menu displays correct hotkey bindings
 - [ ] Debug menu shows hotkey debug info
-- [ ] Custom hotkey bindings persist across app restarts
 
 ## Configuration
 
-### Changing Default Bindings
+### Hotkey Bindings (Hardcoded)
 
-Edit [AppConfiguration.swift](../macos-agent/Sources/BusyLightCore/Models/AppConfiguration.swift):
+Hotkey bindings are hardcoded and cannot be customized via the UI. The bindings are defined in [AppConfiguration.swift](../macos-agent/Sources/BusyLightCore/Models/AppConfiguration.swift):
 
 ```swift
 public var hotkeyBindings: [String: UInt16] = [
     PresenceState.available.rawValue: 18,    // Ctrl+Cmd+1
     PresenceState.tentative.rawValue: 19,   // Ctrl+Cmd+2
     PresenceState.busy.rawValue: 20,        // Ctrl+Cmd+3
-    PresenceState.away.rawValue: 106,       // F16
-    PresenceState.off.rawValue: 64          // F17
+    PresenceState.away.rawValue: 22,        // Ctrl+Cmd+6
 ]
 ```
+
+**Special hotkeys** (not in hotkeyBindings):
+- **Ctrl+Cmd+4** (Resume Calendar) — Hardcoded in [HotkeyManager.swift](../macos-agent/Sources/BusyLightCore/System/HotkeyManager.swift), cannot be remapped
+- **Ctrl+Cmd+5** (Turn Off) — Hardcoded in [HotkeyManager.swift](../macos-agent/Sources/BusyLightCore/System/HotkeyManager.swift), cannot be remapped
 
 ### Changing Override Timeout
 
@@ -254,15 +270,14 @@ public var manualOverrideTimeoutMinutes: Int? = 30
 
 Set to `nil` to disable timeout (overrides persist indefinitely until next hotkey press or Ctrl+Cmd+4).
 
-**IMPORTANT**: The **Ctrl+Cmd+4** hotkey (Resume Calendar) ALWAYS has absolute priority and immediately cancels ANY active override, regardless of remaining timeout. This timeout setting only applies to automatic expiration via `Ctrl+Cmd+1/2/3`. Users can override timeouts at any time by pressing Ctrl+Cmd+4.
+**IMPORTANT**: The **Ctrl+Cmd+4** hotkey (Resume Calendar) ALWAYS has absolute priority and immediately cancels ANY active override, regardless of remaining timeout. This timeout setting only applies to automatic expiration via `Ctrl+Cmd+1/2/3/6`. Users can override timeouts at any time by pressing Ctrl+Cmd+4.
 
 ## Known Limitations & Future Work
 
 ### Current Limitations
-1. **Function keys (F16/F17) don't support modifiers** — They're designed to work alone as simple single-key hotkeys
-2. **Keystroke capture UI** — Currently uses local event monitor (standard macOS approach); not available if another app has keyboard focus
-3. **No key repeat handling** — Holding a key triggers multiple events; implementation doesn't deduplicate
-4. **No Stream Deck native support** — Stream Deck buttons are detected as regular keystrokes with their native key codes; direct SDK integration not yet implemented
+1. **Hardcoded hotkeys** — Hotkey bindings cannot be customized via UI; code rebuild required for changes
+2. **No key repeat handling** — Holding a key triggers multiple events; implementation doesn't deduplicate
+3. **No Stream Deck native support** — Stream Deck buttons are detected as regular keystrokes with their native key codes; direct SDK integration not yet implemented
 
 ### Future Enhancements
 1. **Advanced key combo support** — Arbitrary modifier combinations on any key
@@ -325,13 +340,18 @@ This is a known macOS behavior—keystrokes are timestamped when the event queue
 ## Code Reference
 
 **Main files:**
-- `Sources/BusyLightCore/System/HotkeyManager.swift` — Global keyboard monitoring (200+ lines)
-  - `onHotkeyPressed` callback — Triggered when Ctrl+Cmd+1/2/3 or F16/F17 pressed
+- `Sources/BusyLightCore/System/HotkeyManager.swift` — Global keyboard monitoring (230+ lines)
+  - `onHotkeyPressed` callback — Triggered when Ctrl+Cmd+1/2/3/6 pressed (PresenceState changes)
   - `onResumeCalendarControl` callback — Triggered when Ctrl+Cmd+4 pressed
-- `Sources/BusyLightCore/UI/HotkeyPreferencesController.swift` — Configuration UI (347 lines)
+  - `onTurnOffPressed` callback — Triggered when Ctrl+Cmd+5 pressed
+- `Sources/BusyLightCore/Core/ConfigurationManager.swift` — UserDefaults I/O & migration (210+ lines)
+  - `getHotkeyBindings()` — Loads persisted key code mappings
+  - `setHotkeyBindings()` — Saves modified bindings
+  - `resetHotkeysToDefaults()` — Migrates old function key bindings to Ctrl+Cmd defaults
+  - `loadConfiguration()` — Detects old bindings and triggers migration automatically (lines 54-67)
 - `Sources/BusyLightCore/State/PresenceStateMachine.swift` — `handleHotkeyOverride()` method
 - `Sources/BusyLight/BusyLightApp.swift` — Initialization, callback wiring
-- `Sources/BusyLightCore/Models/AppConfiguration.swift` — Binding persistence
+- `Sources/BusyLightCore/Models/AppConfiguration.swift` — Binding persistence, default key codes
 
 **Tests:**
 - `Tests/BusyLightTests/` — No dedicated hotkey tests yet (planned)

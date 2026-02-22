@@ -161,6 +161,11 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             }
         }
         
+        hotkeyMgr.onTurnOffPressed = { [weak machine] in
+            // Turn off the system
+            machine?.handleEvent(.turnOff)
+        }
+        
         hotkeyMgr.start()
         lifecycleLogger.logEvent("Hotkey manager started")
         
@@ -168,19 +173,6 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         controller.onShowHotkeyDebugInfo = { [weak hotkeyMgr] in
             guard hotkeyMgr != nil else { return "HotkeyManager not available" }
             return "HotkeyManager active\nBindings: Ctrl+Cmd+1/2/3, Ctrl+Cmd+4 (resume), F16, F17"
-        }
-        
-        // Wire hotkey preferences callback
-        controller.onHotkeyPreferencesSaved = { [weak hotkeyMgr] newBindings in
-            // Persist to configuration
-            ConfigurationManager.shared.setHotkeyBindings(newBindings)
-            
-            // Update the hotkey manager with new bindings
-            hotkeyMgr?.updateBindings(newBindings)
-            
-            lifecycleLogger.logEvent("hotkey.bindings.updated_from_preferences", details: [
-                "bindingsCount": String(newBindings.count)
-            ])
         }
         
         // Initialize state machine
