@@ -19,6 +19,15 @@ public protocol CalendarEventStoreProtocol: AnyObject {
     /// Flush the store's in-memory cache so the next fetch reads fresh data.
     /// Must be called after receiving `EKEventStoreChanged`.
     func reset()
+
+    /// Returns a list of all calendars visible to EventKit as (title, source) pairs.
+    /// Used for diagnostics only — e.g. to confirm Google/Outlook accounts are synced.
+    func availableCalendarNames() -> [(title: String, source: String)]
+}
+
+// Default implementation so existing mocks don't need to conform.
+extension CalendarEventStoreProtocol {
+    func availableCalendarNames() -> [(title: String, source: String)] { [] }
 }
 
 // MARK: - Production store wrapper
@@ -51,6 +60,10 @@ final class LiveCalendarEventStore: CalendarEventStoreProtocol {
 
     func reset() {
         store.reset()
+    }
+
+    func availableCalendarNames() -> [(title: String, source: String)] {
+        store.calendars(for: .event).map { ($0.title, $0.source.title) }
     }
 }
 
@@ -127,6 +140,21 @@ public final class CalendarScanner {
                 "start":        ISO8601DateFormatter().string(from: event.startDate),
                 "end":          ISO8601DateFormatter().string(from: event.endDate)
             ])
+        }
+
+        // When nothing is found, log every visible calendar so sync issues are
+        // immediately diagnosable ("is my Google account even registered?").
+        if events.isEmpty {
+            let calendars = eventStore.availableCalendarNames()
+            if calendars.isEmpty {
+                logger.logEvent("calendar.diagnostic.no_calendars",
+                                details: ["hint": "No EK calendars found — check System Settings → Internet Accounts"])
+            } else {
+                for (title, source) in calendars {
+                    logger.logEvent("calendar.diagnostic.visible_calendar",
+                                    details: ["calendar": title, "account": source])
+                }
+            }
         }
 
         return events

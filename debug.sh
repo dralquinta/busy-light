@@ -1,28 +1,35 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINARY="./macos-agent/.build/debug/BusyLight"
+BUNDLE="./BusyLight.app"
 
-if [[ ! -x "$BINARY" ]]; then
-    echo "[debug.sh] Binary not found. Building first…"
+# Build (and assemble .app bundle) if needed
+if [[ ! -d "${BUNDLE}" ]]; then
+    echo "[debug.sh] Bundle not found. Building first..."
     bash build.sh
 fi
 
-echo "[debug.sh] Starting BusyLight…"
-"$BINARY" &
-APP_PID=$!
-echo "[debug.sh] PID: $APP_PID"
+echo "[debug.sh] Launching ${BUNDLE}..."
+open "${BUNDLE}"
 
-# Give the app a moment to register its subsystem
+# Resolve the PID of the running binary inside the bundle
 sleep 1
+APP_PID=$(pgrep -f "BusyLight.app/Contents/MacOS/BusyLight" | head -1 || true)
+if [[ -n "$APP_PID" ]]; then
+    echo "[debug.sh] PID: $APP_PID"
+else
+    echo "[debug.sh] Could not resolve PID (app may have already been running)"
+fi
 
-echo "[debug.sh] Streaming logs (Ctrl+C to stop app + log stream)…"
-echo "──────────────────────────────────────────────────────────────"
+echo "[debug.sh] Streaming logs (Ctrl+C to stop)..."
+echo "--------------------------------------------------------------"
 
 cleanup() {
     echo ""
-    echo "[debug.sh] Stopping BusyLight (PID $APP_PID)…"
-    kill "$APP_PID" 2>/dev/null || true
+    if [[ -n "${APP_PID:-}" ]]; then
+        echo "[debug.sh] Stopping BusyLight (PID $APP_PID)..."
+        kill "$APP_PID" 2>/dev/null || true
+    fi
     exit 0
 }
 trap cleanup INT TERM
