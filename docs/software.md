@@ -83,26 +83,54 @@ Hotkeys require Accessibility permission. See [Hotkey Documentation](hotkey.md) 
 
 ## WLED Communication
 
-The agent communicates with the WLED device using WLED's standard HTTP JSON API:
+The agent communicates with the WLED device using WLED's standard HTTP JSON API.
 
+**Activate a preset:**
 ```
 POST http://<device-ip>/json/state
+{"ps": <preset_id>, "v": true}
 ```
 
-Each presence state maps to a WLED preset ID:
+**Health check / device info:**
+```
+GET http://<device-ip>/json/info
+```
 
-| Presence State | WLED Preset |
-|----------------|-------------|
-| Available | 1 |
-| Tentative | 2 |
-| Busy | 3 |
-| Away | 4 |
-| Off | 5 |
-| Unknown | 6 |
+Each presence state maps to a WLED preset ID (defaults, configurable):
 
-The agent sends a `ps` (preset) command to activate the corresponding preset on the device. All color, animation, and brightness decisions are handled by WLED — the agent only sends the preset ID.
+| Presence State | Default Preset |
+|----------------|----------------|
+| Available | 1 — Green solid |
+| Tentative | 2 — Yellow/Amber breathe |
+| Busy | 3 — Red solid |
+| Away | 4 — Blue fade |
+| Unknown | 5 — White blink |
+| Off | 6 — LEDs off |
 
-See the [Hardware Documentation](hardware.md) for WLED preset configuration.
+The agent sends the preset ID to WLED and WLED handles all pixel rendering. The agent only decides *which* preset to activate.
+
+### Multi-Device Broadcasting
+
+The agent can control **multiple WLED devices simultaneously**. All devices receive the same state change in parallel using Swift's `TaskGroup`. If one device is offline, the others continue to function normally.
+
+### Device Discovery
+
+By default, the agent discovers WLED devices on your local network automatically via **Bonjour/mDNS** (`_http._tcp`). Discovery runs at startup and takes approximately 5 seconds. Discovered devices are verified by fetching `/json/info` and checking for a WLED version string.
+
+Discovery can be disabled and devices configured manually if needed.
+
+### Network Layer Components
+
+The WLED communication layer is implemented across four files:
+
+| File | Role |
+|------|------|
+| `WLEDTypes.swift` | API models (`WLEDStateRequest`, `WLEDStateResponse`, `WLEDInfoResponse`, `WLEDDevice`), `NetworkError` enum |
+| `HTTPAdapter.swift` | Actor-isolated HTTP client with 3-retry exponential backoff (100 ms → 200 ms → 400 ms) |
+| `DeviceDiscovery.swift` | Bonjour/mDNS `_http._tcp` browser; verifies candidates via `/json/info` |
+| `NetworkClient.swift` | Coordinator: parallel `TaskGroup` broadcast, health polling, deduplication |
+
+Full implementation detail: [WLED WLAN Support](wled-wlan-support.md)
 
 ---
 
@@ -131,8 +159,8 @@ Required for reading calendar events via EventKit.
 
 ### Prerequisites
 
-- macOS Monterey (12.0) or later
-- Xcode 13+ or Swift 5.5+
+- macOS 14.0 (Sonoma) or later
+- Xcode 15+ or Swift 6+
 
 ### Build
 
@@ -176,13 +204,42 @@ This is required because new builds have different code signatures.
 
 Settings are persisted in `UserDefaults` under the suite `com.busylight.agent`:
 
+**Core settings:**
+
 | Key | Default | Description |
 |-----|---------|-------------|
 | `app.presence_state` | `unknown` | Current presence mode |
-| `app.device_network_address` | — | WLED device IP address |
-| `app.device_network_port` | `80` | WLED HTTP port |
 | `app.manual_override_timeout` | `30` | Manual override expiry in minutes (-1 = no timeout) |
 | `app.state_stabilization` | `0` | State change debounce delay in seconds |
+| `app.show_menu_bar_text` | `true` | Show presence text in menu bar |
+
+**Network / WLED settings:**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `app.device_network_addresses` | `[]` | Array of WLED device IP addresses (merged with discovered devices) |
+| `app.device_network_port` | `80` | WLED HTTP port (standard HTTP) |
+| `app.wled_enable_discovery` | `true` | Enable Bonjour/mDNS auto-discovery |
+| `app.wled_http_timeout` | `500` | HTTP request timeout in milliseconds |
+| `app.wled_health_check_interval` | `10` | Health check polling interval in seconds |
+
+**Preset ID mappings:**
+
+| Key | Default | Presence State |
+|-----|---------|----------------|
+| `app.wled_preset_available` | `1` | Available |
+| `app.wled_preset_tentative` | `2` | Tentative |
+| `app.wled_preset_busy` | `3` | Busy |
+| `app.wled_preset_away` | `4` | Away |
+| `app.wled_preset_unknown` | `5` | Unknown |
+| `app.wled_preset_off` | `6` | Off |
+
+**Example: configure multiple devices manually:**
+```bash
+defaults write com.busylight.agent app.device_network_addresses \
+  -array "192.168.1.100" "192.168.1.101"
+defaults write com.busylight.agent app.wled_enable_discovery -bool false
+```
 
 ---
 
@@ -215,6 +272,8 @@ Or via Swift Package Manager:
 ```bash
 swift test
 ```
+
+For full WLED network integration testing procedures, see [WLED Network Module Testing Guide](../docs/module-testing.md).
 
 ---
 

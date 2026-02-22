@@ -17,25 +17,25 @@ BusyLight is composed of two main components: a macOS menu bar agent and an ESP3
 │                        macOS Agent                               │
 │                                                                  │
 │  ┌──────────────┐   ┌────────────────────┐   ┌──────────────┐  │
-│  │  EventKit    │   │   State Machine     │   │ WLED Client  │  │
-│  │  Calendar    │──►│  (Priority-based)   │──►│ (HTTP JSON)  │  │
+│  │  EventKit    │   │   State Machine     │   │NetworkClient │  │
+│  │  Calendar    │──►│  (Priority-based)   │──►│  (Actor)     │  │
 │  │  Scanner     │   │                     │   └──────┬───────┘  │
 │  └──────────────┘   │  System  (highest)  │          │          │
-│                     │  Manual             │          │          │
-│  ┌──────────────┐   │  Calendar (lowest)  │          │          │
-│  │  Hotkeys     │──►│                     │          │          │
-│  │  (Global)    │   └────────────────────┘          │          │
-│  └──────────────┘                                    │          │
-│                                                      │          │
-│  ┌──────────────┐                                    │          │
-│  │  Menu Bar UI │                                    │          │
-│  │  (AppKit)    │                                    │          │
-│  └──────────────┘                                    │          │
-└──────────────────────────────────────────────────────┼──────────┘
-                                                        │
-                                               HTTP JSON (local Wi-Fi)
-                                                        │
-                                                        ▼
+│                     │  Manual             │    ┌─────┴──────┐   │
+│  ┌──────────────┐   │  Calendar (lowest)  │    │            │   │
+│  │  Hotkeys     │──►│                     │    ▼            ▼   │
+│  │  (Global)    │   └────────────────────┘ ┌──────────┐ ┌─────┐│
+│  └──────────────┘                          │HTTPAdapter│ │Disc.││
+│                                            │  (Actor)  │ │(mDNS││
+│  ┌──────────────┐                          └─────┬─────┘ └──┬──┘│
+│  │  Menu Bar UI │                                │           │   │
+│  │  (AppKit)    │                                │           │   │
+│  └──────────────┘                                │           │   │
+└─────────────────────────────────────────────────┼───────────┼───┘
+                                                   │           │
+                                          HTTP JSON (LAN)  Bonjour
+                                                   │           │
+                                                   ▼           ▼
                                        ┌────────────────────────────┐
                                        │       ESP32 + WLED          │
                                        │                              │
@@ -46,8 +46,8 @@ BusyLight is composed of two main components: a macOS menu bar agent and an ESP3
                                        │           │                  │
                                        │           ▼                  │
                                        │  ┌────────────────────┐    │
-                                       │  │  LED Matrix/Strip  │    │
-                                       │  │  (WS2812B, etc.)   │    │
+                                       │  │  8×8 LED Matrix    │    │
+                                       │  │  (WS2812B, 64 LEDs)│    │
                                        │  └────────────────────┘    │
                                        └────────────────────────────┘
 ```
@@ -67,7 +67,9 @@ The macOS agent is a native Swift application using AppKit.
 | `PresenceStateMachine` | Coordinates state from all input sources with priority rules |
 | `HotkeyManager` | Registers and handles global keyboard shortcuts |
 | `StatusMenuController` | Renders menu bar icon and dropdown menu |
-| `WLEDClient` *(planned)* | Sends HTTP JSON commands to WLED device |
+| `NetworkClient` | Broadcasts state to all configured WLED devices in parallel |
+| `HTTPAdapter` | HTTP client with retry logic, timeout, and exponential backoff |
+| `DeviceDiscovery` | Bonjour/mDNS discovery of WLED devices on the local network |
 | `ConfigurationManager` | Persists settings in UserDefaults |
 
 ### ESP32 + WLED Device
@@ -86,29 +88,38 @@ The hardware device runs WLED firmware on an ESP32 microcontroller.
 
 ### macOS → WLED
 
-The macOS agent communicates with the WLED device using WLED's standard HTTP JSON API over your local Wi-Fi network.
+The macOS agent communicates with the WLED device using WLED's standard HTTP JSON API over your local Wi-Fi network. The default port is **80** (standard HTTP).
 
-**Endpoint**: `POST http://<device-ip>/json/state`
+**Activate a preset:** `POST http://<device-ip>/json/state`
 
-**Payload** (activate a preset):
 ```json
-{
-  "ps": <preset_id>
-}
+{"ps": <preset_id>, "v": true}
 ```
 
-**Presence State → Preset Mapping**:
+**Health check / device info:** `GET http://<device-ip>/json/info`
 
-| Presence State | Preset ID |
-|----------------|-----------|
-| Available | 1 |
-| Tentative | 2 |
-| Busy | 3 |
-| Away | 4 |
-| Off | 5 |
-| Unknown / Disconnected | 6 |
+**Presence State → Preset Mapping (defaults)**:
 
-All communication is local. No internet connection is required after initial WLED setup.
+| Presence State | Preset ID | Visual |
+|----------------|-----------|--------|
+| Available | 1 | Green solid |
+| Tentative | 2 | Yellow/Amber breathe |
+| Busy | 3 | Red solid |
+| Away | 4 | Blue fade |
+| Unknown | 5 | White blink |
+| Off | 6 | LEDs off |
+
+All preset IDs are configurable via UserDefaults. All communication is local — no internet connection is required.
+
+### Multi-Device Broadcasting
+
+When multiple device IPs are configured (or discovered via Bonjour), the agent sends the same state to all devices in parallel using Swift `TaskGroup`. Individual device health is tracked separately — offline devices do not block state updates to online ones.
+
+### Device Discovery
+
+The agent discovers WLED devices automatically via **Bonjour/mDNS** (`_http._tcp`). Discovery verifies each found HTTP service by fetching `/json/info` and checking for a WLED version string. Discovered devices are merged with any manually configured IP addresses (duplicates deduplicated).
+
+See [macos-agent/network/README.md](../macos-agent/network/README.md) for full network layer documentation.
 
 ---
 
@@ -167,6 +178,20 @@ Higher-priority states always override lower-priority states. When a higher-prio
 - WLED API has no authentication by default. Ensure your home Wi-Fi network is secure.
 - The macOS agent requests only the minimum permissions required: Accessibility (hotkeys) and Calendars (EventKit).
 
+## Concurrency Model
+
+All network components use Swift 6 strict concurrency with actor isolation:
+
+| Component | Isolation | Reason |
+|-----------|-----------|--------|
+| `NetworkClient` | `actor` | Thread-safe device list and state tracking |
+| `HTTPAdapter` | `actor` | Thread-safe URLSession access |
+| `DeviceDiscovery` | `actor` + `@preconcurrency` | NetServiceBrowser delegate compatibility |
+| `StatusMenuController` | `@MainActor` | AppKit UI updates on main thread |
+| `ConfigurationManager` | `@MainActor` | UserDefaults access on main thread |
+
+Data models (`WLEDDevice`, `WLEDStateRequest`, `WLEDStateResponse`) are `Sendable` and immutable, safely crossing actor boundaries.
+
 ---
 
 ## Future Architecture (Planned)
@@ -180,4 +205,4 @@ Higher-priority states always override lower-priority states. When a higher-prio
 
 ---
 
-[← Back to Docs Home](index.md) · [Hardware Setup →](hardware.md) · [Software Documentation →](software.md)
+[← Back to Docs Home](index.md) · [Hardware Setup →](hardware.md) · [Software Documentation →](software.md) · [WLED WLAN Support →](wled-wlan-support.md)

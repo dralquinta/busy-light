@@ -137,9 +137,9 @@ See [Software Documentation](software.md) for full details.
 1. Clone this repository
 2. Build the app: `./build.sh`
 3. Grant Accessibility and Calendar permissions
-4. Configure the WLED device IP address in the app settings
+4. Configure the WLED device IP address in the app settings (or rely on Bonjour auto-discovery)
 
-→ Full details: [Software Documentation](software.md)
+→ Full details: [Software Documentation](software.md) · [WLED WLAN Support](wled-wlan-support.md)
 
 ---
 

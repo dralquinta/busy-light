@@ -203,12 +203,18 @@ Visit the full documentation site (coming soon via GitHub Pages).
 - **[macOS Presence Agent — Menu Bar Skeleton](docs/macOS-presence-agent-menuskeleton.md)** — Complete implementation guide, architecture, build workflow, concurrency design, and testing strategy (February 2026)
 - **[State Machine Architecture](docs/state-machine.md)** — Hierarchical state machine coordinating presence across calendar, manual overrides, and system events. Modes, transitions, priority rules, and configuration options.
 - **[Architecture Overview](docs/architecture.md)** — System architecture, component breakdown, and communication protocols
+- **[WLED WLAN Support](docs/wled-wlan-support.md)** — Comprehensive technical documentation for the WLED HTTP communication layer: NetworkClient, HTTPAdapter, DeviceDiscovery, multi-device broadcasting, and concurrency design
 
 ### Integration Guides
 - **[EventKit Calendar Integration](docs/eventkit-calendar-integration.md)** — Calendar event scanning, permission handling, and availability resolution logic
 - **[Global Hotkey Integration](docs/hotkey.md)** — Keyboard shortcuts for quick status changes (Ctrl+Cmd+1/2/3 for states plus Ctrl+Cmd+4 to resume calendar), F16/F17, override behavior, permission setup, and troubleshooting
 - **[Hardware Layer (WLED & ESP32)](docs/hardware.md)** — ESP32 setup, WLED installation, wiring, and device configuration
 - **[Software Layer (macOS Agent)](docs/software.md)** — Calendar integration, state management, hotkeys, and WLED communication
+- **[Network Integration (WLED)](macos-agent/network/README.md)** — HTTP JSON API, Bonjour discovery, multi-device, health monitoring
+
+### Hardware & Testing
+- **[Hardware Module Assembly](docs/module-assembly.md)** — Step-by-step wiring guide, bill of materials, enclosure assembly
+- **[WLED Network Module Testing](docs/module-testing.md)** — 12 test cases covering all 6 presence states, resilience, multi-device, and discovery
 
 ## Design Philosophy
 
@@ -226,14 +232,14 @@ Visit the full documentation site (coming soon via GitHub Pages).
 - ✅ Presence state management
 - ✅ Structured logging
 - ✅ Base test suite
-- 🔄 Hardware communication adapter (REST/WebSocket) — coming next
+- ✅ Hardware communication adapter — WLED HTTP JSON client, multi-device broadcasting, Bonjour discovery
 
 ## Requirements
 
-- macOS Monterey (12.0) or later
-- Xcode 13+ or Swift 5.5+
-- ESP32 board + addressable LED strip (for hardware component)
-- WLED firmware — see [https://install.wled.me/](https://install.wled.me/)
+- macOS 14.0 (Sonoma) or later
+- Xcode 15+ or Swift 6+
+- ESP32 board + WS2812B LED matrix (for hardware component)
+- WLED firmware 0.14.0+ — see [https://install.wled.me/](https://install.wled.me/)
 
 ## Contributing
 
