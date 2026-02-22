@@ -34,7 +34,46 @@ public class ConfigurationManager {
         configuration.deviceNetworkAddress = userDefaults.string(forKey: AppConfiguration.CodingKeys.deviceNetworkAddress.rawValue) ?? ""
         configuration.deviceNetworkPort = userDefaults.integer(forKey: AppConfiguration.CodingKeys.deviceNetworkPort.rawValue)
         if configuration.deviceNetworkPort == 0 {
-            configuration.deviceNetworkPort = 8080
+            configuration.deviceNetworkPort = 80  // WLED default port
+        }
+        
+        // Load network addresses array
+        if let addresses = userDefaults.array(forKey: AppConfiguration.CodingKeys.deviceNetworkAddresses.rawValue) as? [String] {
+            configuration.deviceNetworkAddresses = addresses
+        } else if !configuration.deviceNetworkAddress.isEmpty {
+            // Migration: copy legacy single address to array
+            configuration.deviceNetworkAddresses = [configuration.deviceNetworkAddress]
+            configLogger.logEvent("Migrated legacy deviceNetworkAddress to deviceNetworkAddresses")
+        }
+        
+        // Load WLED configuration
+        let presetAvailable = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetAvailable.rawValue)
+        configuration.wledPresetAvailable = presetAvailable != 0 ? presetAvailable : 1
+        
+        let presetTentative = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetTentative.rawValue)
+        configuration.wledPresetTentative = presetTentative != 0 ? presetTentative : 2
+        
+        let presetBusy = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetBusy.rawValue)
+        configuration.wledPresetBusy = presetBusy != 0 ? presetBusy : 3
+        
+        let presetAway = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetAway.rawValue)
+        configuration.wledPresetAway = presetAway != 0 ? presetAway : 4
+        
+        let presetUnknown = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetUnknown.rawValue)
+        configuration.wledPresetUnknown = presetUnknown != 0 ? presetUnknown : 5
+        
+        let presetOff = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledPresetOff.rawValue)
+        configuration.wledPresetOff = presetOff != 0 ? presetOff : 6
+        
+        let timeout = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledHttpTimeout.rawValue)
+        configuration.wledHttpTimeout = timeout != 0 ? timeout : 500
+        
+        let healthCheckInterval = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledHealthCheckInterval.rawValue)
+        configuration.wledHealthCheckInterval = healthCheckInterval != 0 ? healthCheckInterval : 10
+        
+        // wledEnableDiscovery defaults to true
+        if userDefaults.object(forKey: AppConfiguration.CodingKeys.wledEnableDiscovery.rawValue) != nil {
+            configuration.wledEnableDiscovery = userDefaults.bool(forKey: AppConfiguration.CodingKeys.wledEnableDiscovery.rawValue)
         }
         
         configuration.launchOnStartup = userDefaults.bool(forKey: AppConfiguration.CodingKeys.launchOnStartup.rawValue)
@@ -86,6 +125,19 @@ public class ConfigurationManager {
         userDefaults.set(configuration.presenceState.rawValue, forKey: AppConfiguration.CodingKeys.presenceState.rawValue)
         userDefaults.set(configuration.deviceNetworkAddress, forKey: AppConfiguration.CodingKeys.deviceNetworkAddress.rawValue)
         userDefaults.set(configuration.deviceNetworkPort, forKey: AppConfiguration.CodingKeys.deviceNetworkPort.rawValue)
+        userDefaults.set(configuration.deviceNetworkAddresses, forKey: AppConfiguration.CodingKeys.deviceNetworkAddresses.rawValue)
+        
+        // Save WLED configuration
+        userDefaults.set(configuration.wledPresetAvailable, forKey: AppConfiguration.CodingKeys.wledPresetAvailable.rawValue)
+        userDefaults.set(configuration.wledPresetTentative, forKey: AppConfiguration.CodingKeys.wledPresetTentative.rawValue)
+        userDefaults.set(configuration.wledPresetBusy, forKey: AppConfiguration.CodingKeys.wledPresetBusy.rawValue)
+        userDefaults.set(configuration.wledPresetAway, forKey: AppConfiguration.CodingKeys.wledPresetAway.rawValue)
+        userDefaults.set(configuration.wledPresetUnknown, forKey: AppConfiguration.CodingKeys.wledPresetUnknown.rawValue)
+        userDefaults.set(configuration.wledPresetOff, forKey: AppConfiguration.CodingKeys.wledPresetOff.rawValue)
+        userDefaults.set(configuration.wledHttpTimeout, forKey: AppConfiguration.CodingKeys.wledHttpTimeout.rawValue)
+        userDefaults.set(configuration.wledHealthCheckInterval, forKey: AppConfiguration.CodingKeys.wledHealthCheckInterval.rawValue)
+        userDefaults.set(configuration.wledEnableDiscovery, forKey: AppConfiguration.CodingKeys.wledEnableDiscovery.rawValue)
+        
         userDefaults.set(configuration.launchOnStartup, forKey: AppConfiguration.CodingKeys.launchOnStartup.rawValue)
         userDefaults.set(configuration.showMenuBarText, forKey: AppConfiguration.CodingKeys.showMenuBarText.rawValue)
         
@@ -129,6 +181,116 @@ public class ConfigurationManager {
     public func setDeviceNetworkPort(_ port: Int) {
         configuration.deviceNetworkPort = port
         saveConfiguration()
+    }
+    
+    public func getDeviceNetworkAddresses() -> [String] {
+        return configuration.deviceNetworkAddresses
+    }
+    
+    public func setDeviceNetworkAddresses(_ addresses: [String]) {
+        configuration.deviceNetworkAddresses = addresses
+        saveConfiguration()
+    }
+    
+    // MARK: - WLED Configuration
+    
+    public func getWledPresetAvailable() -> Int {
+        return configuration.wledPresetAvailable
+    }
+    
+    public func setWledPresetAvailable(_ presetId: Int) {
+        configuration.wledPresetAvailable = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledPresetTentative() -> Int {
+        return configuration.wledPresetTentative
+    }
+    
+    public func setWledPresetTentative(_ presetId: Int) {
+        configuration.wledPresetTentative = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledPresetBusy() -> Int {
+        return configuration.wledPresetBusy
+    }
+    
+    public func setWledPresetBusy(_ presetId: Int) {
+        configuration.wledPresetBusy = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledPresetAway() -> Int {
+        return configuration.wledPresetAway
+    }
+    
+    public func setWledPresetAway(_ presetId: Int) {
+        configuration.wledPresetAway = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledPresetUnknown() -> Int {
+        return configuration.wledPresetUnknown
+    }
+    
+    public func setWledPresetUnknown(_ presetId: Int) {
+        configuration.wledPresetUnknown = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledPresetOff() -> Int {
+        return configuration.wledPresetOff
+    }
+    
+    public func setWledPresetOff(_ presetId: Int) {
+        configuration.wledPresetOff = presetId
+        saveConfiguration()
+    }
+    
+    public func getWledHttpTimeout() -> Int {
+        return configuration.wledHttpTimeout
+    }
+    
+    public func setWledHttpTimeout(_ milliseconds: Int) {
+        configuration.wledHttpTimeout = milliseconds
+        saveConfiguration()
+    }
+    
+    public func getWledHealthCheckInterval() -> Int {
+        return configuration.wledHealthCheckInterval
+    }
+    
+    public func setWledHealthCheckInterval(_ seconds: Int) {
+        configuration.wledHealthCheckInterval = seconds
+        saveConfiguration()
+    }
+    
+    public func getWledEnableDiscovery() -> Bool {
+        return configuration.wledEnableDiscovery
+    }
+    
+    public func setWledEnableDiscovery(_ enabled: Bool) {
+        configuration.wledEnableDiscovery = enabled
+        saveConfiguration()
+    }
+    
+    /// Returns the WLED preset ID for a given presence state.
+    public func getWledPreset(for state: PresenceState) -> Int {
+        switch state {
+        case .available:
+            return configuration.wledPresetAvailable
+        case .tentative:
+            return configuration.wledPresetTentative
+        case .busy:
+            return configuration.wledPresetBusy
+        case .away:
+            return configuration.wledPresetAway
+        case .unknown:
+            return configuration.wledPresetUnknown
+        case .off:
+            return configuration.wledPresetOff
+        }
     }
     
     public func getLaunchOnStartup() -> Bool {

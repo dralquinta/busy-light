@@ -3,8 +3,36 @@ import Foundation
 /// Configuration settings persisted via UserDefaults.
 public struct AppConfiguration: Codable, Sendable {
     public var presenceState: PresenceState = .available
+    
+    // Legacy network configuration (deprecated, use deviceNetworkAddresses)
     public var deviceNetworkAddress: String = ""
-    public var deviceNetworkPort: Int = 8080
+    public var deviceNetworkPort: Int = 80  // WLED default port
+    
+    // Network configuration
+    /// Multiple device IP addresses for broadcasting presence state
+    public var deviceNetworkAddresses: [String] = []
+    
+    // WLED configuration
+    /// WLED preset ID for Available state (default: 1)
+    public var wledPresetAvailable: Int = 1
+    /// WLED preset ID for Tentative state (default: 2)
+    public var wledPresetTentative: Int = 2
+    /// WLED preset ID for Busy state (default: 3)
+    public var wledPresetBusy: Int = 3
+    /// WLED preset ID for Away state (default: 4)
+    public var wledPresetAway: Int = 4
+    /// WLED preset ID for Unknown state (default: 5)
+    public var wledPresetUnknown: Int = 5
+    /// WLED preset ID for Off state (default: 6)
+    public var wledPresetOff: Int = 6
+    /// HTTP request timeout in milliseconds (default: 500ms)
+    public var wledHttpTimeout: Int = 500
+    /// Health check polling interval in seconds (default: 10s)
+    public var wledHealthCheckInterval: Int = 10
+    /// Enable Bonjour/mDNS device discovery (default: true)
+    public var wledEnableDiscovery: Bool = true
+    
+    // UI configuration
     public var launchOnStartup: Bool = false
     public var showMenuBarText: Bool = true
     
@@ -32,6 +60,16 @@ public struct AppConfiguration: Codable, Sendable {
         case presenceState = "app.presence_state"
         case deviceNetworkAddress = "app.device_network_address"
         case deviceNetworkPort = "app.device_network_port"
+        case deviceNetworkAddresses = "app.device_network_addresses"
+        case wledPresetAvailable = "app.wled_preset_available"
+        case wledPresetTentative = "app.wled_preset_tentative"
+        case wledPresetBusy = "app.wled_preset_busy"
+        case wledPresetAway = "app.wled_preset_away"
+        case wledPresetUnknown = "app.wled_preset_unknown"
+        case wledPresetOff = "app.wled_preset_off"
+        case wledHttpTimeout = "app.wled_http_timeout"
+        case wledHealthCheckInterval = "app.wled_health_check_interval"
+        case wledEnableDiscovery = "app.wled_enable_discovery"
         case launchOnStartup = "app.launch_on_startup"
         case showMenuBarText = "app.show_menu_bar_text"
         case manualOverrideTimeoutMinutes = "app.manual_override_timeout"
