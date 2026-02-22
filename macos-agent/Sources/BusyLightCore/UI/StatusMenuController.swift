@@ -82,7 +82,7 @@ public class StatusMenuController {
         
         menu.addItem(NSMenuItem.separator())
 
-        // Debug submenu — helps verify away/return transitions without locking
+        // Debug submenu — helps verify away/return and manual override transitions without locking
         let debugMenu = NSMenu(title: "Debug")
 
         let scanNowItem = NSMenuItem(title: "Scan Calendar Now",
@@ -92,6 +92,7 @@ public class StatusMenuController {
 
         debugMenu.addItem(NSMenuItem.separator())
 
+        // System away simulation
         let simulateAwayItem = NSMenuItem(title: "Simulate Screen Lock (Away)",
                                           action: #selector(simulateAway), keyEquivalent: "")
         simulateAwayItem.target = self
@@ -101,6 +102,33 @@ public class StatusMenuController {
                                             action: #selector(simulateReturn), keyEquivalent: "")
         simulateReturnItem.target = self
         debugMenu.addItem(simulateReturnItem)
+
+        debugMenu.addItem(NSMenuItem.separator())
+
+        // Manual override simulation submenu
+        let overrideMenu = NSMenu(title: "Simulate Manual Override")
+
+        for state in [PresenceState.available, .busy, .tentative, .away] {
+            let item = NSMenuItem(
+                title: "Override → \(state.displayName)",
+                action: #selector(simulateManualOverride(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = state.rawValue
+            overrideMenu.addItem(item)
+        }
+
+        overrideMenu.addItem(NSMenuItem.separator())
+
+        let clearOverrideItem = NSMenuItem(title: "Clear Override (Resume Calendar)",
+                                            action: #selector(simulateClearOverride), keyEquivalent: "")
+        clearOverrideItem.target = self
+        overrideMenu.addItem(clearOverrideItem)
+
+        let overrideParent = NSMenuItem(title: "Simulate Manual Override", action: nil, keyEquivalent: "")
+        overrideParent.submenu = overrideMenu
+        debugMenu.addItem(overrideParent)
 
         let debugParent = NSMenuItem(title: "Debug", action: nil, keyEquivalent: "")
         debugParent.submenu = debugMenu
@@ -143,7 +171,8 @@ public class StatusMenuController {
             calendarStatusItem?.title = "Calendar: Overridden"
             resumeCalendarItem?.isHidden = false
         } else {
-            calendarStatusItem?.title = "Calendar: Active"
+            // Show "Resuming…" until the first calendar scan delivers a result
+            calendarStatusItem?.title = "Calendar: Resuming…"
             resumeCalendarItem?.isHidden = true
         }
         
@@ -252,6 +281,18 @@ public class StatusMenuController {
 
     @objc private func simulateReturn() {
         onSimulateReturn?()
+    }
+
+    @objc private func simulateManualOverride(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let state = PresenceState(rawValue: rawValue) else { return }
+        onManualOverride?(state)
+        uiLogger.logEvent("debug.manual.override.simulated", details: ["state": state.rawValue])
+    }
+
+    @objc private func simulateClearOverride() {
+        onResumeCalendarControl?()
+        uiLogger.logEvent("debug.manual.override.cleared")
     }
 
     @objc private func scanCalendarNow() {

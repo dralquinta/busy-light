@@ -230,6 +230,10 @@ public final class PresenceStateMachine {
         expiryCheckTask?.cancel()
         expiryCheckTask = nil
         
+        // Reset source to startup so the incoming calendar update is not blocked
+        // by the stale manual source priority when it arrives after the sync.
+        currentSource = .startup
+        
         // Switch to auto mode
         setMode(.auto)
         

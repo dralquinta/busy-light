@@ -36,11 +36,13 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         // Wire state machine callbacks to UI
         machine.onStateChanged = { [weak controller] state, source in
             controller?.updatePresenceState(state)
-            
-            // Update calendar status label based on source
-            if source == .calendar {
+
+            // Update calendar status label whenever calendar drives the state
+            if source == .calendar || source == .startup {
                 if state == .available {
                     controller?.setCalendarEngineStatus("Active")
+                } else if state == .unknown {
+                    controller?.setCalendarEngineStatus("Starting…")
                 } else {
                     controller?.setCalendarEngineStatus("\(state.displayName) ●")
                 }
