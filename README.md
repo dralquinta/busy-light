@@ -254,7 +254,6 @@ BusyLight is free and open-source. If this project helps you reclaim focus time,
 Maintaining open-source hardware and software projects takes time, iteration, and ongoing effort. Your support directly enables new features, better documentation, and continued improvements.
 
 [![Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/dralquinta)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/dralquinta)
 
 ---
 
