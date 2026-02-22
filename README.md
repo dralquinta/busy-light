@@ -17,13 +17,30 @@ xcodebuild -scheme BusyLight
 
 The application will launch and display an icon in your menu bar. See [macos-agent/README.md](macos-agent/README.md) for full instructions.
 
+## Hotkeys (Hardcoded)
+
+BusyLight responds to global keyboard shortcuts for quick status changes:
+
+| Hotkey | Action |
+|--------|--------|
+| **Ctrl+Cmd+1** | Mark as Available |
+| **Ctrl+Cmd+2** | Mark as Tentative |
+| **Ctrl+Cmd+3** | Mark as Busy |
+| **Ctrl+Cmd+4** | Resume Calendar Control (cancel override) |
+| **Ctrl+Cmd+5** | Turn Off |
+| **Ctrl+Cmd+6** | Mark as Away |
+
+These hotkeys work globally and require Accessibility permission (see below). Manual overrides (Ctrl+Cmd+1/2/3/6) persist for 30 minutes before returning to calendar-based status, unless **Ctrl+Cmd+4** is pressed to immediately resume calendar control. **Ctrl+Cmd+5** turns off the app immediately.
+
+See [docs/hotkey.md](docs/hotkey.md) for complete documentation and permission setup.
+
 ## Required Permissions
 
 BusyLight requires two permissions to function:
 
 ### 1. Accessibility Permission (for Global Hotkeys)
 
-Required for detecting keyboard shortcuts (Ctrl+Cmd+1/2/3, F16/F17) system-wide.
+Required for detecting keyboard shortcuts (Ctrl+Cmd+1/2/3/4/5/6) system-wide.
 
 **To grant:**
 1. Open **System Settings → Privacy & Security → Accessibility**
@@ -57,6 +74,8 @@ After building or updating the code:
 8. **Status should sync** to your current calendar availability
 
 The permission reset is required because new app builds have different code signatures, and macOS's accessibility database needs to re-validate the app. This is a one-time setup per build.
+
+**Note**: If upgrading from an older version that used F13-F17 function keys for hotkeys, the app will automatically migrate them to Ctrl+Cmd combinations on first launch.
 
 ## Documentation
 

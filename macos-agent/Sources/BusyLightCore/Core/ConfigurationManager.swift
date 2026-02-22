@@ -58,7 +58,17 @@ public class ConfigurationManager {
                 bindings[state] = keyCode.uint16Value
             }
             if !bindings.isEmpty {
-                configuration.hotkeyBindings = bindings
+                // Detect old function key bindings (F13=105, F14=107, F15=113, F16=106, F17=64)
+                // and reset to new Ctrl+Cmd bindings if found
+                let oldFunctionKeyCodes: Set<UInt16> = [105, 107, 113, 106, 64]
+                let hasOldBindings = bindings.values.contains { oldFunctionKeyCodes.contains($0) }
+                
+                if hasOldBindings {
+                    configLogger.logEvent("Detected old function key bindings, resetting to new Ctrl+Cmd defaults")
+                    resetHotkeysToDefaults()
+                } else {
+                    configuration.hotkeyBindings = bindings
+                }
             }
         }
         
@@ -160,6 +170,22 @@ public class ConfigurationManager {
     }
     
     // MARK: - Hotkey Configuration
+    
+    /// Resets hotkey bindings to default Ctrl+Cmd values and saves to UserDefaults.
+    /// Called when old function key bindings are detected.
+    public func resetHotkeysToDefaults() {
+        configuration.hotkeyBindings = AppConfiguration.defaultConfiguration.hotkeyBindings
+        
+        // Save the reset bindings back to UserDefaults
+        let bindingsDict = configuration.hotkeyBindings.mapValues { NSNumber(value: $0) }
+        userDefaults.set(bindingsDict, forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue)
+        userDefaults.synchronize()
+        
+        configLogger.logEvent("resetHotkeysToDefaults", details: [
+            "bindingsCount": String(configuration.hotkeyBindings.count),
+            "bindings": configuration.hotkeyBindings.description
+        ])
+    }
     
     /// Retrieves the current hotkey bindings (state -> key code mapping).
     /// Returns default bindings if none have been configured.

@@ -18,9 +18,9 @@ enum FunctionKeyCode: UInt16, Sendable {
 /// Maps hotkeys to presence state changes and invokes callbacks.
 ///
 /// Hotkey bindings:
-/// - Ctrl+Cmd+1/2/3 → Available, Tentative, Busy (from hotkeyBindings)
-/// - Ctrl+Cmd+4 → Resume Calendar (checked separately, requires same Ctrl+Cmd modifiers)
-/// - F16/F17 → Away, Off (from hotkeyBindings)
+/// - Ctrl+Cmd+1/2/3/6 → Available, Tentative, Busy, Away (from hotkeyBindings)
+/// - Ctrl+Cmd+4 → Resume Calendar (checked separately, requires Ctrl+Cmd modifiers)
+/// - Ctrl+Cmd+5 → Turn Off (checked separately, requires Ctrl+Cmd modifiers)
 ///
 /// Uses AppKit `NSEvent.addGlobalMonitorForEvents(matching:handler:)` which
 /// requires the Accessibility API permission grant on modern macOS. The user is
@@ -38,6 +38,9 @@ public final class HotkeyManager {
     
     /// Called when Ctrl+Cmd+4 is pressed to resume calendar control.
     public var onResumeCalendarControl: (@MainActor () -> Void)?
+    
+    /// Called when Ctrl+Cmd+5 is pressed to turn off the system.
+    public var onTurnOffPressed: (@MainActor () -> Void)?
     
     // MARK: - Configuration
     
@@ -154,8 +157,9 @@ public final class HotkeyManager {
     private func handleKeyDown(_ event: NSEvent) {
         let keyCode = event.keyCode
         
-        // Check for Resume Calendar (Ctrl+Cmd+4) first, before checking hotkeyBindings
-        // This is handled separately since it's not a PresenceState binding
+        // Check for special hotkey combinations first, before checking hotkeyBindings
+        
+        // Ctrl+Cmd+4 — Resume Calendar Control
         if keyCode == 21 {
             let hasControl = event.modifierFlags.contains(.control)
             let hasCmd = event.modifierFlags.contains(.command)
@@ -168,11 +172,24 @@ public final class HotkeyManager {
             }
         }
         
+        // Ctrl+Cmd+5 — Turn Off
+        if keyCode == 23 {
+            let hasControl = event.modifierFlags.contains(.control)
+            let hasCmd = event.modifierFlags.contains(.command)
+            if hasControl && hasCmd {
+                logger.logEvent("hotkey.turn_off", details: [
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ])
+                onTurnOffPressed?()
+                return
+            }
+        }
+        
         // Find which presence state this key maps to (if any)
         for (state, boundKey) in hotkeyBindings {
             if boundKey == keyCode {
-                // Special handling for Ctrl+Cmd combinations (keys 1, 2, 3)
-                if [18, 19, 20].contains(keyCode) {
+                // Special handling for Ctrl+Cmd combinations (keys 1, 2, 3, 6)
+                if [18, 19, 20, 22].contains(keyCode) {
                     let hasControl = event.modifierFlags.contains(.control)
                     let hasCmd = event.modifierFlags.contains(.command)
                     if !hasControl || !hasCmd {
@@ -201,6 +218,8 @@ public final class HotkeyManager {
         case 19:  return "Ctrl+Cmd+2"
         case 20:  return "Ctrl+Cmd+3"
         case 21:  return "Ctrl+Cmd+4"
+        case 23:  return "Ctrl+Cmd+5"
+        case 22:  return "Ctrl+Cmd+6"
         case 105: return "F13"
         case 107: return "F14"
         case 113: return "F15"
