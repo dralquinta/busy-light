@@ -100,6 +100,9 @@ public final class PresenceStateMachine {
 
         case .turnOff:
             handleTurnOff()
+            
+        case .hotkeyPressed(let newState):
+            handleHotkeyOverride(newState)
         }
     }
     
@@ -204,6 +207,13 @@ public final class PresenceStateMachine {
         
         // Apply state change
         applyStateTransition(to: newState, source: .manual)
+    }
+    
+    private func handleHotkeyOverride(_ newState: PresenceState) {
+        // Hotkey override behaves identically to manual override.
+        // Both switch to manual mode and prevent calendar sync.
+        // This reuses the exact same logic as manual override.
+        handleManualOverride(newState)
     }
     
     private func handleSystemAway() {

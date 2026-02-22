@@ -13,6 +13,15 @@ public struct AppConfiguration: Codable, Sendable {
     public var manualOverrideTimeoutMinutes: Int? = 120
     /// State stabilization delay in seconds to prevent flapping (default 0 = disabled)
     public var stateStabilizationSeconds: Int = 0
+    /// Hotkey bindings: maps presence states to Carbon virtual key codes
+    /// Defaults: F13=available, F14=tentative, F15=busy, F16=away, F17=off
+    public var hotkeyBindings: [String: UInt16] = [
+        PresenceState.available.rawValue: 105,   // F13
+        PresenceState.tentative.rawValue: 107,   // F14
+        PresenceState.busy.rawValue: 113,        // F15
+        PresenceState.away.rawValue: 106,        // F16
+        PresenceState.off.rawValue: 64           // F17
+    ]
     
     public static let defaultConfiguration = AppConfiguration()
     
@@ -26,5 +35,6 @@ public struct AppConfiguration: Codable, Sendable {
         case showMenuBarText = "app.show_menu_bar_text"
         case manualOverrideTimeoutMinutes = "app.manual_override_timeout"
         case stateStabilizationSeconds = "app.state_stabilization"
+        case hotkeyBindings = "app.hotkey_bindings"
     }
 }

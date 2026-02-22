@@ -7,6 +7,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     private var statusMenuController: StatusMenuController?
     private var calendarEngine: CalendarEngine?
     private var systemMonitor: SystemPresenceMonitor?
+    private var hotkeyManager: HotkeyManager?
     private var stateMachine: PresenceStateMachine?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
@@ -130,6 +131,19 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         monitor.start()
         lifecycleLogger.logEvent("System presence monitor started")
         
+        // Start the hotkey manager to listen for global keyboard events
+        let hotkeyMgr = HotkeyManager(
+            hotkeyBindings: ConfigurationManager.shared.getHotkeyBindings()
+        )
+        hotkeyManager = hotkeyMgr
+        
+        hotkeyMgr.onHotkeyPressed = { [weak machine] state in
+            machine?.handleEvent(.hotkeyPressed(state))
+        }
+        
+        hotkeyMgr.start()
+        lifecycleLogger.logEvent("Hotkey manager started")
+        
         // Initialize state machine
         machine.handleEvent(.startupInitialize)
     }
@@ -143,6 +157,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         lifecycleLogger.logEvent("Application terminating")
 
         systemMonitor?.stop()
+        hotkeyManager?.stop()
         calendarEngine?.stop()
         lifecycleLogger.logEvent("Monitors stopped")
 
