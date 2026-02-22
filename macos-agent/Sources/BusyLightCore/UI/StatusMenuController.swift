@@ -14,10 +14,10 @@ public class StatusMenuController {
         // Create status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         
-        // Set initial button appearance
+        // Set initial button appearance with semaphore icon
         if let button = statusItem.button {
-            button.title = "●"
-            button.font = NSFont.systemFont(ofSize: 12)
+            button.title = "🟢"  // Green circle for available
+            button.font = NSFont.systemFont(ofSize: 14)
         }
         
         statusItem.menu = menu
@@ -95,16 +95,14 @@ public class StatusMenuController {
     private func updateButtonAppearance(for state: PresenceState) {
         guard let button = statusItem.button else { return }
         
-        // Update visual indication based on presence state
+        // Update semaphore icon based on presence state
         switch state {
         case .available:
-            button.image = nil  // Default appearance for available
+            button.title = "🟢"  // Green for available
         case .busy:
-            // Visual indication that user is busy
-            // Color can be updated via button properties if needed
-            button.image = nil
+            button.title = "🔴"  // Red for busy
         case .away:
-            button.image = nil  // Default appearance for away
+            button.title = "🟡"  // Yellow for away
         }
     }
     
