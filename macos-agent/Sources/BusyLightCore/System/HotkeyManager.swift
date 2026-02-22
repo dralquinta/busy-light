@@ -80,6 +80,11 @@ public final class HotkeyManager {
     public func start() {
         stop()
         
+        logger.logEvent("hotkey.monitor.starting", details: [
+            "bindingsCount": String(hotkeyBindings.count),
+            "accessibility": String(AXIsProcessTrusted())
+        ])
+        
         // Request accessibility permission via NSEvent global event monitoring
         // This will prompt the user on first run and require manual grant in System Prefs
         globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -89,10 +94,19 @@ public final class HotkeyManager {
             }
         }
         
-        isRunning = true
+        isRunning = globalEventMonitor != nil
         logger.logEvent("hotkey.monitor.started", details: [
-            "bindingsCount": String(hotkeyBindings.count)
+            "bindingsCount": String(hotkeyBindings.count),
+            "monitorActive": String(isRunning),
+            "monitorTokenNil": String(globalEventMonitor == nil)
         ])
+        
+        // If monitor failed to register, try logging with all events to see if ANY are captured
+        if globalEventMonitor == nil {
+            logger.logEvent("hotkey.monitor.failed_to_register", details: [
+                "note": "NSEvent.addGlobalMonitorForEvents returned nil"
+            ])
+        }
     }
     
     /// Stops monitoring global keyboard events.
@@ -128,12 +142,23 @@ public final class HotkeyManager {
     
     /// Handles a keyboard key-down event from the global monitor.
     /// Checks if the key code matches any configured hotkey binding and invokes callback.
+    /// For modifier key combinations, also checks NSEventModifierFlags.
     private func handleKeyDown(_ event: NSEvent) {
         let keyCode = event.keyCode
         
         // Find which presence state this key maps to (if any)
         for (state, boundKey) in hotkeyBindings {
             if boundKey == keyCode {
+                // Special handling for Ctrl+Cmd combinations (keys 1, 2, 3)
+                if [18, 19, 20].contains(keyCode) {
+                    let hasControl = event.modifierFlags.contains(.control)
+                    let hasCmd = event.modifierFlags.contains(.command)
+                    if !hasControl || !hasCmd {
+                        // Key pressed but without required modifiers, skip
+                        continue
+                    }
+                }
+                
                 logger.logEvent("hotkey.pressed", details: [
                     "keyCode": String(keyCode),
                     "targetState": state.rawValue,
@@ -145,7 +170,23 @@ public final class HotkeyManager {
                 return
             }
         }
-        
-        // Key press did not match any hotkey binding; ignore
+    }
+    
+    /// Converts a Carbon key code to function key name.
+    private func keyCodeToName(_ keyCode: UInt16) -> String {
+        switch keyCode {
+        case 18:  return "Ctrl+Cmd+1"
+        case 19:  return "Ctrl+Cmd+2"
+        case 20:  return "Ctrl+Cmd+3"
+        case 105: return "F13"
+        case 107: return "F14"
+        case 113: return "F15"
+        case 106: return "F16"
+        case 64:  return "F17"
+        case 79:  return "F18"
+        case 80:  return "F19"
+        case 90:  return "F20"
+        default:  return "Key\(keyCode)"
+        }
     }
 }

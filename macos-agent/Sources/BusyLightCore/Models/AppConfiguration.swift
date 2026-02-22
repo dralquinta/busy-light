@@ -14,11 +14,12 @@ public struct AppConfiguration: Codable, Sendable {
     /// State stabilization delay in seconds to prevent flapping (default 0 = disabled)
     public var stateStabilizationSeconds: Int = 0
     /// Hotkey bindings: maps presence states to Carbon virtual key codes
-    /// Defaults: F13=available, F14=tentative, F15=busy, F16=away, F17=off
+    /// Control+Cmd combinations: 1=available, 2=tentative, 3=busy
+    /// Defaults: Ctrl+Cmd+1=available, Ctrl+Cmd+2=tentative, Ctrl+Cmd+3=busy, F16=away, F17=off
     public var hotkeyBindings: [String: UInt16] = [
-        PresenceState.available.rawValue: 105,   // F13
-        PresenceState.tentative.rawValue: 107,   // F14
-        PresenceState.busy.rawValue: 113,        // F15
+        PresenceState.available.rawValue: 18,    // 1 key (with modifiers: Control + Cmd)
+        PresenceState.tentative.rawValue: 19,   // 2 key (with modifiers: Control + Cmd)
+        PresenceState.busy.rawValue: 20,        // 3 key (with modifiers: Control + Cmd)
         PresenceState.away.rawValue: 106,        // F16
         PresenceState.off.rawValue: 64           // F17
     ]

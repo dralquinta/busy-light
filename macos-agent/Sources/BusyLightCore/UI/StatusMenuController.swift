@@ -41,11 +41,17 @@ public class StatusMenuController {
     /// Called when the user selects a new override timeout. Passes `nil` for "Never".
     public var onTimeoutChanged: (@MainActor (Int?) -> Void)?
 
-    /// Called when the user updates hotkey bindings. Passes new bindings: [PresenceState: UInt16]
-    public var onHotkeyBindingsChanged: (@MainActor ([PresenceState: UInt16]) -> Void)?
+    /// Called when the user wants to see hotkey debug information
+    public var onShowHotkeyDebugInfo: (@MainActor () -> String)?
+    
+    /// Called when the user saves hotkey preference bindings
+    public var onHotkeyPreferencesSaved: (@MainActor ([PresenceState: UInt16]) -> Void)?
 
     /// Items in the Override Timeout submenu — kept for checkmark updates.
     private var timeoutMenuItems: [NSMenuItem] = []
+    
+    /// Hotkey preferences window controller (held to keep it in memory while open)
+    private var hotkeyPreferencesController: HotkeyPreferencesController?
 
     /// Timeout options shown in the menu: (label, minutes — nil means never)
     private let timeoutOptions: [(label: String, minutes: Int?)] = [
@@ -170,6 +176,15 @@ public class StatusMenuController {
                                      action: #selector(scanCalendarNow), keyEquivalent: "")
         scanNowItem.target = self
         debugMenu.addItem(scanNowItem)
+
+        debugMenu.addItem(NSMenuItem.separator())
+
+        // Hotkey manager debug info
+        let hotkeyDebugItem = NSMenuItem(title: "Hotkey Debug Info",
+                                         action: #selector(showHotkeyDebugInfo),
+                                         keyEquivalent: "")
+        hotkeyDebugItem.target = self
+        debugMenu.addItem(hotkeyDebugItem)
 
         debugMenu.addItem(NSMenuItem.separator())
 
@@ -423,7 +438,37 @@ public class StatusMenuController {
 
     @objc private func openHotkeysPreferences() {
         uiLogger.logEvent("Hotkeys preferences requested")
-        // TODO: Open preferences window with hotkey configuration UI
+        
+        let currentBindings = ConfigurationManager.shared.getHotkeyBindings()
+        let preferencesController = HotkeyPreferencesController(currentBindings: currentBindings)
+        
+        // Handle bindings saved
+        preferencesController.onBindingsSaved = { [weak self] newBindings in
+            self?.onHotkeyPreferencesSaved?(newBindings)
+        }
+        
+        // Keep reference to prevent garbage collection
+        self.hotkeyPreferencesController = preferencesController
+        
+        preferencesController.showWindow()
+    }
+
+    @objc private func showHotkeyDebugInfo() {
+        guard let debugInfo = onShowHotkeyDebugInfo?() else {
+            uiLogger.logEvent("Hotkey debug info not available")
+            return
+        }
+        
+        // Log the debug info
+        uiLogger.logEvent("hotkey.debug.info", details: ["info": debugInfo])
+        
+        // Show in a simple alert
+        let alert = NSAlert()
+        alert.messageText = "Hotkey Manager Debug Info"
+        alert.informativeText = debugInfo
+        alert.addButton(withTitle: "OK")
+        alert.alertStyle = .informational
+        alert.runModal()
     }
 
     @objc private func quitApp() {

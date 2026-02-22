@@ -1,5 +1,6 @@
 import AppKit
 import BusyLightCore
+import ApplicationServices
 
 /// Application delegate managing the macOS menu bar presence agent lifecycle.
 @MainActor
@@ -15,6 +16,9 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
 
         // Configure app to run in menu bar only (no Dock icon)
         NSApplication.shared.setActivationPolicy(.prohibited)
+        
+        // Check accessibility permission required for global hotkey monitoring
+        checkAccessibilityPermission()
 
         // Initialize configuration system
         ConfigurationManager.shared.loadConfiguration()
@@ -138,11 +142,31 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         hotkeyManager = hotkeyMgr
         
         hotkeyMgr.onHotkeyPressed = { [weak machine] state in
+            // Handle state transition
             machine?.handleEvent(.hotkeyPressed(state))
         }
         
         hotkeyMgr.start()
         lifecycleLogger.logEvent("Hotkey manager started")
+        
+        // Wire debug info callback
+        controller.onShowHotkeyDebugInfo = { [weak hotkeyMgr] in
+            guard hotkeyMgr != nil else { return "HotkeyManager not available" }
+            return "HotkeyManager active\nBindings: Ctrl+Cmd+1, Ctrl+Cmd+2, Ctrl+Cmd+3, F16, F17"
+        }
+        
+        // Wire hotkey preferences callback
+        controller.onHotkeyPreferencesSaved = { [weak hotkeyMgr] newBindings in
+            // Persist to configuration
+            ConfigurationManager.shared.setHotkeyBindings(newBindings)
+            
+            // Update the hotkey manager with new bindings
+            hotkeyMgr?.updateBindings(newBindings)
+            
+            lifecycleLogger.logEvent("hotkey.bindings.updated_from_preferences", details: [
+                "bindingsCount": String(newBindings.count)
+            ])
+        }
         
         // Initialize state machine
         machine.handleEvent(.startupInitialize)
@@ -164,6 +188,62 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         // Ensure configuration is saved
         ConfigurationManager.shared.saveConfiguration()
         lifecycleLogger.logEvent("Configuration saved at shutdown")
+    }
+    
+    // MARK: - Helpers
+    
+    /// Converts a Carbon virtual key code to a human-readable function key name.
+    private func functionKeyName(for keyCode: UInt16) -> String {
+        switch keyCode {
+        case 105: return "F13"
+        case 107: return "F14"
+        case 113: return "F15"
+        case 106: return "F16"
+        case 64:  return "F17"
+        case 79:  return "F18"
+        case 80:  return "F19"
+        case 90:  return "F20"
+        default:  return "Unknown"
+        }
+    }
+    
+    /// Checks if accessibility permission is granted and shows a popup if not.
+    private func checkAccessibilityPermission() {
+        // Check if accessibility is enabled
+        let isTrusted = AXIsProcessTrusted()
+        
+        if !isTrusted {
+            // Permission not granted - show popup
+            let alert = NSAlert()
+            alert.messageText = "Accessibility Permission Required"
+            alert.informativeText = """
+            BusyLight needs Accessibility permission to monitor global hotkeys (F13–F17).
+            
+            Steps to enable:
+            1. Open System Settings → Privacy & Security → Accessibility
+            2. Look for "BusyLight" in the list
+            3. If not there, click "+" and select BusyLight.app
+            4. Toggle the switch ON
+            5. Restart BusyLight
+            
+            Without this permission, hotkeys from Stream Deck or keyboard won't be detected.
+            """
+            alert.addButton(withTitle: "Open System Settings")
+            alert.addButton(withTitle: "Remind Later")
+            alert.alertStyle = .warning
+            
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                // Open System Preferences to Accessibility
+                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            
+            lifecycleLogger.logEvent("accessibility.permission.not_granted")
+        } else {
+            lifecycleLogger.logEvent("accessibility.permission.granted")
+        }
     }
 }
 
