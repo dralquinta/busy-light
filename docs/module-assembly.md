@@ -1290,7 +1290,7 @@ See [Testing Documentation](module-testing.md) for full test suite covering:
 
 **Components Needed:**
 - Momentary push button
-- 2× DU(pont wires
+- 2× Dupont wires
 - GPIO input pin on ESP32
 
 **Implementation:**
