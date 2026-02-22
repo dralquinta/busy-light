@@ -334,6 +334,7 @@ public class HotkeyPreferencesController: NSObject, NSWindowDelegate {
         case 18:  return "Ctrl+Cmd+1"
         case 19:  return "Ctrl+Cmd+2"
         case 20:  return "Ctrl+Cmd+3"
+        case 21:  return "Ctrl+Cmd+4"
         case 105: return "F13"
         case 107: return "F14"
         case 113: return "F15"

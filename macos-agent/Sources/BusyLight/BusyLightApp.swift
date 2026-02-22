@@ -135,6 +135,11 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         monitor.start()
         lifecycleLogger.logEvent("System presence monitor started")
         
+        // Immediately scan calendars on startup to set initial status
+        Task {
+            await engine.scanNow()
+        }
+        
         // Start the hotkey manager to listen for global keyboard events
         let hotkeyMgr = HotkeyManager(
             hotkeyBindings: ConfigurationManager.shared.getHotkeyBindings()
@@ -146,13 +151,23 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             machine?.handleEvent(.hotkeyPressed(state))
         }
         
+        hotkeyMgr.onResumeCalendarControl = { [weak machine, weak engine] in
+            // Cancel override and resume calendar control immediately
+            machine?.handleEvent(.resumeAuto)
+            
+            // Trigger immediate calendar scan to update status
+            Task {
+                await engine?.scanNow()
+            }
+        }
+        
         hotkeyMgr.start()
         lifecycleLogger.logEvent("Hotkey manager started")
         
         // Wire debug info callback
         controller.onShowHotkeyDebugInfo = { [weak hotkeyMgr] in
             guard hotkeyMgr != nil else { return "HotkeyManager not available" }
-            return "HotkeyManager active\nBindings: Ctrl+Cmd+1, Ctrl+Cmd+2, Ctrl+Cmd+3, F16, F17"
+            return "HotkeyManager active\nBindings: Ctrl+Cmd+1/2/3, Ctrl+Cmd+4 (resume), F16, F17"
         }
         
         // Wire hotkey preferences callback

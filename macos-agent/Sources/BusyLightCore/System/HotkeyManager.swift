@@ -14,8 +14,13 @@ enum FunctionKeyCode: UInt16, Sendable {
     case f20 = 90
 }
 
-/// Monitors global keyboard events for hotkey presses (F13–F20).
-/// Maps function key events to presence state changes and invokes callbacks.
+/// Monitors global keyboard events for hotkey presses (F13–F20 and Ctrl+Cmd combinations).
+/// Maps hotkeys to presence state changes and invokes callbacks.
+///
+/// Hotkey bindings:
+/// - Ctrl+Cmd+1/2/3 → Available, Tentative, Busy (from hotkeyBindings)
+/// - Ctrl+Cmd+4 → Resume Calendar (checked separately, requires same Ctrl+Cmd modifiers)
+/// - F16/F17 → Away, Off (from hotkeyBindings)
 ///
 /// Uses AppKit `NSEvent.addGlobalMonitorForEvents(matching:handler:)` which
 /// requires the Accessibility API permission grant on modern macOS. The user is
@@ -30,6 +35,9 @@ public final class HotkeyManager {
     /// Called when a registered hotkey is pressed.
     /// Provides the target presence state mapped from the function key.
     public var onHotkeyPressed: (@MainActor (PresenceState) -> Void)?
+    
+    /// Called when Ctrl+Cmd+4 is pressed to resume calendar control.
+    public var onResumeCalendarControl: (@MainActor () -> Void)?
     
     // MARK: - Configuration
     
@@ -146,6 +154,20 @@ public final class HotkeyManager {
     private func handleKeyDown(_ event: NSEvent) {
         let keyCode = event.keyCode
         
+        // Check for Resume Calendar (Ctrl+Cmd+4) first, before checking hotkeyBindings
+        // This is handled separately since it's not a PresenceState binding
+        if keyCode == 21 {
+            let hasControl = event.modifierFlags.contains(.control)
+            let hasCmd = event.modifierFlags.contains(.command)
+            if hasControl && hasCmd {
+                logger.logEvent("hotkey.resume_calendar", details: [
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ])
+                onResumeCalendarControl?()
+                return
+            }
+        }
+        
         // Find which presence state this key maps to (if any)
         for (state, boundKey) in hotkeyBindings {
             if boundKey == keyCode {
@@ -178,6 +200,7 @@ public final class HotkeyManager {
         case 18:  return "Ctrl+Cmd+1"
         case 19:  return "Ctrl+Cmd+2"
         case 20:  return "Ctrl+Cmd+3"
+        case 21:  return "Ctrl+Cmd+4"
         case 105: return "F13"
         case 107: return "F14"
         case 113: return "F15"

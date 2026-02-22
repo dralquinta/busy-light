@@ -9,8 +9,8 @@ public struct AppConfiguration: Codable, Sendable {
     public var showMenuBarText: Bool = true
     
     // State machine configuration
-    /// Manual override timeout in minutes (nil = no timeout, default 120 minutes)
-    public var manualOverrideTimeoutMinutes: Int? = 120
+    /// Manual override timeout in minutes (nil = no timeout, default 30 minutes)
+    public var manualOverrideTimeoutMinutes: Int? = 30
     /// State stabilization delay in seconds to prevent flapping (default 0 = disabled)
     public var stateStabilizationSeconds: Int = 0
     /// Hotkey bindings: maps presence states to Carbon virtual key codes
