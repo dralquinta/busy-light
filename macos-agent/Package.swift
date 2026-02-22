@@ -11,6 +11,7 @@ let package = Package(
             name: "BusyLightCore",
             dependencies: [],
             path: "Sources/BusyLightCore",
+            exclude: ["State/README.md"],
             linkerSettings: [
                 .linkedFramework("EventKit")
             ]

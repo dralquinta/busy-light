@@ -7,6 +7,8 @@ public enum PresenceState: String, Codable, Sendable {
     case away = "away"
     /// Tentative: the user has an unconfirmed calendar event at this time.
     case tentative = "tentative"
+    /// Unknown: uninitialized state or error condition
+    case unknown = "unknown"
     
     public var displayName: String {
         switch self {
@@ -18,6 +20,8 @@ public enum PresenceState: String, Codable, Sendable {
             return "Away"
         case .tentative:
             return "Tentative"
+        case .unknown:
+            return "Unknown"
         }
     }
 }

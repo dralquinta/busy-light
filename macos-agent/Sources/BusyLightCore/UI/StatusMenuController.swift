@@ -15,13 +15,15 @@ public class StatusMenuController {
     /// The state currently shown in the menu bar icon and status text.
     private var currentDisplayState: PresenceState = .available
 
-    /// When `true` the current `PresenceState` was resolved from the calendar
-    /// engine rather than set manually.
-    private var calendarDriven = false
+    /// Current operating mode (auto = calendar-driven, manual = user override)
+    private var currentMode: OperatingMode = .auto
 
     /// Called when the user taps "Resume Calendar Control" so the app can
     /// trigger an immediate calendar rescan.
     public var onResumeCalendarControl: (@MainActor () -> Void)?
+    
+    /// Called when the user manually overrides the presence state
+    public var onManualOverride: (@MainActor (PresenceState) -> Void)?
 
     /// Called when the user taps "Simulate Away" in the debug menu.
     public var onSimulateAway: (@MainActor () -> Void)?
@@ -123,7 +125,7 @@ public class StatusMenuController {
 
         // Toggle label: always offers the opposite of the current displayed state.
         let toggleTarget: PresenceState = state == .available ? .busy : .available
-        let prefix = calendarDriven ? "Manually " : ""
+        let prefix = currentMode == .manual ? "Manually " : ""
         toggleMenuItem?.title = "\(prefix)Mark as \(toggleTarget.displayName)"
 
         // Update button icon color based on state
@@ -131,9 +133,31 @@ public class StatusMenuController {
 
         uiLogger.logEvent("Presence state updated", details: ["state": state.rawValue])
     }
+    
+    /// Called by the state machine when operating mode changes
+    public func updateModeDisplay(_ mode: OperatingMode) {
+        currentMode = mode
+        
+        // Update UI elements based on mode
+        if mode == .manual {
+            calendarStatusItem?.title = "Calendar: Overridden"
+            resumeCalendarItem?.isHidden = false
+        } else {
+            calendarStatusItem?.title = "Calendar: Active"
+            resumeCalendarItem?.isHidden = true
+        }
+        
+        // Update toggle button prefix
+        let toggleTarget: PresenceState = currentDisplayState == .available ? .busy : .available
+        let prefix = mode == .manual ? "Manually " : ""
+        toggleMenuItem?.title = "\(prefix)Mark as \(toggleTarget.displayName)"
+        
+        uiLogger.logEvent("Mode display updated", details: ["mode": mode.rawValue])
+    }
 
     /// Called by `SystemPresenceMonitor` when the screen locks or the system sleeps.
     /// Forces the icon and menu to `.away` regardless of the current calendar state.
+    /// DEPRECATED: State machine now handles this via .systemAway event
     public func applyAwayState() {
         calendarStatusItem?.title = "Calendar: Paused (screen locked)"
         updatePresenceState(.away)
@@ -143,8 +167,9 @@ public class StatusMenuController {
 
     /// Called by `SystemPresenceMonitor` when the user returns.
     /// Clears the away override so the next calendar scan can restore the real icon.
+    /// DEPRECATED: State machine now handles this via .systemReturned event
     public func clearAwayState() {
-        calendarDriven = false
+        currentMode = .auto
         resumeCalendarItem?.isHidden = true
         calendarStatusItem?.title = "Calendar: Resuming…"
         uiLogger.logEvent("system.presence.away.cleared")
@@ -152,10 +177,10 @@ public class StatusMenuController {
 
     /// Called by the calendar engine whenever it resolves a new availability state.
     /// Updates the UI and marks state as calendar-driven.
+    /// DEPRECATED: State machine now handles this via .calendarUpdated event
     public func applyCalendarState(_ state: PresenceState) {
-        calendarDriven = true
+        currentMode = .auto
         resumeCalendarItem?.isHidden = true
-        // Only show the state in the label when it is noteworthy (non-available).
         if state == .available {
             calendarStatusItem?.title = "Calendar: Active"
         } else {
@@ -171,69 +196,56 @@ public class StatusMenuController {
     
     public func updateDeviceStatus(_ status: DeviceStatus) {
         deviceStatusItem?.title = "Device: \(status.displayText)"
-        
+
         if let error = status.errorMessage {
             deviceStatusItem?.title = "Device: \(status.displayText) - \(error)"
         }
-        
+
         uiLogger.logEvent("Device status updated", details: ["state": status.connectionState.rawValue])
     }
-    
+
     private func updateMenuAppearance() {
         let config = ConfigurationManager.shared
         let state = config.getPresenceState()
         updatePresenceState(state)
-        
+
         // Initialize device status as disconnected (will be updated later)
         let initialStatus = DeviceStatus(connectionState: .disconnected)
         updateDeviceStatus(initialStatus)
     }
-    
+
     private func updateButtonAppearance(for state: PresenceState) {
         guard let button = statusItem.button else { return }
-        
-        // Update semaphore icon based on presence state
+
         switch state {
         case .available:
-            button.title = "🟢"  // Green for available
+            button.title = "🟢"
         case .busy:
-            button.title = "🔴"  // Red for busy
+            button.title = "🔴"
         case .away:
-            button.title = "⚪"  // Gray/white for away (absent)
+            button.title = "⚪"
         case .tentative:
-            button.title = "🟠"  // Orange for tentative
+            button.title = "🟠"
+        case .unknown:
+            button.title = "⚫"
         }
     }
-    
+
     // MARK: - Action Handlers
-    
+
     @objc private func togglePresenceState() {
-        // Use the locally tracked display state — the calendar engine does NOT
-        // write to ConfigurationManager, so config.getPresenceState() is stale.
         let newState: PresenceState = currentDisplayState == .available ? .busy : .available
-
-        // Mark as overridden and show the Resume item.
-        calendarDriven = false
-        calendarStatusItem?.title = "Calendar: Overridden"
-        resumeCalendarItem?.isHidden = false
-
-        updatePresenceState(newState)
-
-        uiLogger.logEvent("Presence state toggled",
+        onManualOverride?(newState)
+        uiLogger.logEvent("Presence state toggle requested",
                           details: ["from": currentDisplayState.rawValue, "to": newState.rawValue,
                                     "source": "manual"])
     }
 
-    /// Clears the manual override and re-enables calendar-driven state.
-    /// The caller is responsible for triggering a fresh calendar scan.
     @objc private func resumeCalendarControl() {
-        calendarDriven = true
-        calendarStatusItem?.title = "Calendar: Resuming…"
-        resumeCalendarItem?.isHidden = true
         onResumeCalendarControl?()
-        uiLogger.logEvent("calendar.control.resumed", details: ["source": "manual"])
+        uiLogger.logEvent("calendar.control.resume.requested", details: ["source": "manual"])
     }
-    
+
     @objc private func simulateAway() {
         onSimulateAway?()
     }
@@ -250,9 +262,8 @@ public class StatusMenuController {
 
     @objc private func openPreferences() {
         uiLogger.logEvent("Preferences requested (not yet implemented)")
-        // Placeholder for future preferences window
     }
-    
+
     @objc private func quitApp() {
         uiLogger.logEvent("Quit requested from menu")
         lifecycleLogger.logEvent("Application shutting down via menu")
