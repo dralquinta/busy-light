@@ -9,6 +9,7 @@ public class StatusMenuController {
     private var statusText: NSMenuItem?
     private var toggleMenuItem: NSMenuItem?
     private var resumeCalendarItem: NSMenuItem?
+    private var turnOffMenuItem: NSMenuItem?
     private var deviceStatusItem: NSMenuItem?
     private var calendarStatusItem: NSMenuItem?
 
@@ -33,6 +34,25 @@ public class StatusMenuController {
 
     /// Called when the user taps "Scan Calendar Now" in the debug menu.
     public var onScanNow: (@MainActor () -> Void)?
+
+    /// Called when the user selects "Turn Off BusyLight" to suspend all syncing.
+    public var onTurnOff: (@MainActor () -> Void)?
+
+    /// Called when the user selects a new override timeout. Passes `nil` for "Never".
+    public var onTimeoutChanged: (@MainActor (Int?) -> Void)?
+
+    /// Items in the Override Timeout submenu — kept for checkmark updates.
+    private var timeoutMenuItems: [NSMenuItem] = []
+
+    /// Timeout options shown in the menu: (label, minutes — nil means never)
+    private let timeoutOptions: [(label: String, minutes: Int?)] = [
+        ("15 minutes",  15),
+        ("30 minutes",  30),
+        ("60 minutes",  60),
+        ("2 hours",    120),
+        ("4 hours",    240),
+        ("Never",      nil)
+    ]
     
     public init() {
         // Create status bar item
@@ -71,6 +91,13 @@ public class StatusMenuController {
         resumeCalendarItem?.target = self
         resumeCalendarItem?.isHidden = true
         menu.addItem(resumeCalendarItem!)
+
+        // Turn Off item — suspends all syncing, visible in auto/manual mode
+        turnOffMenuItem = NSMenuItem(title: "Turn Off BusyLight",
+                                     action: #selector(turnOffSystem),
+                                     keyEquivalent: "")
+        turnOffMenuItem?.target = self
+        menu.addItem(turnOffMenuItem!)
         
         // Device status
         deviceStatusItem = NSMenuItem(title: "Device: Disconnected", action: nil, keyEquivalent: "")
@@ -80,6 +107,25 @@ public class StatusMenuController {
         calendarStatusItem = NSMenuItem(title: "Calendar: Starting…", action: nil, keyEquivalent: "")
         menu.addItem(calendarStatusItem!)
         
+        menu.addItem(NSMenuItem.separator())
+
+        // Override Timeout submenu
+        let timeoutMenu = NSMenu(title: "Override Timeout")
+        timeoutMenuItems = timeoutOptions.map { option in
+            let item = NSMenuItem(
+                title: option.label,
+                action: #selector(selectOverrideTimeout(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = option.minutes as AnyObject?
+            timeoutMenu.addItem(item)
+            return item
+        }
+        let timeoutParent = NSMenuItem(title: "Override Timeout", action: nil, keyEquivalent: "")
+        timeoutParent.submenu = timeoutMenu
+        menu.addItem(timeoutParent)
+
         menu.addItem(NSMenuItem.separator())
 
         // Debug submenu — helps verify away/return and manual override transitions without locking
@@ -145,6 +191,17 @@ public class StatusMenuController {
         menu.addItem(quitItem)
         
         uiLogger.logEvent("Menu structure initialized")
+
+        // Reflect the persisted timeout in the checkmarks
+        refreshTimeoutCheckmarks(current: ConfigurationManager.shared.getManualOverrideTimeoutMinutes())
+    }
+
+    /// Updates checkmarks in the Override Timeout submenu to reflect `current`.
+    public func refreshTimeoutCheckmarks(current: Int?) {
+        for item in timeoutMenuItems {
+            let itemMinutes = item.representedObject as? Int
+            item.state = (itemMinutes == current) ? .on : .off
+        }
     }
     
     public func updatePresenceState(_ state: PresenceState) {
@@ -167,13 +224,20 @@ public class StatusMenuController {
         currentMode = mode
         
         // Update UI elements based on mode
-        if mode == .manual {
+        switch mode {
+        case .off:
+            calendarStatusItem?.title = "Calendar: Disabled"
+            resumeCalendarItem?.isHidden = false
+            turnOffMenuItem?.isHidden = true
+        case .manual:
             calendarStatusItem?.title = "Calendar: Overridden"
             resumeCalendarItem?.isHidden = false
-        } else {
+            turnOffMenuItem?.isHidden = false
+        case .auto:
             // Show "Resuming…" until the first calendar scan delivers a result
             calendarStatusItem?.title = "Calendar: Resuming…"
             resumeCalendarItem?.isHidden = true
+            turnOffMenuItem?.isHidden = false
         }
         
         // Update toggle button prefix
@@ -257,6 +321,8 @@ public class StatusMenuController {
             button.title = "🟠"
         case .unknown:
             button.title = "⚫"
+        case .off:
+            button.title = "⬛"
         }
     }
 
@@ -275,12 +341,27 @@ public class StatusMenuController {
         uiLogger.logEvent("calendar.control.resume.requested", details: ["source": "manual"])
     }
 
+    @objc private func turnOffSystem() {
+        onTurnOff?()
+        uiLogger.logEvent("system.off.requested", details: ["source": "menu"])
+    }
+
     @objc private func simulateAway() {
         onSimulateAway?()
     }
 
     @objc private func simulateReturn() {
         onSimulateReturn?()
+    }
+
+    @objc private func selectOverrideTimeout(_ sender: NSMenuItem) {
+        // representedObject is nil for "Never", or an Int for a minute count
+        let minutes = sender.representedObject as? Int
+        refreshTimeoutCheckmarks(current: minutes)
+        onTimeoutChanged?(minutes)
+        uiLogger.logEvent("override.timeout.changed", details: [
+            "minutes": minutes.map { String($0) } ?? "never"
+        ])
     }
 
     @objc private func simulateManualOverride(_ sender: NSMenuItem) {

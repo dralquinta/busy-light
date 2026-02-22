@@ -97,6 +97,9 @@ public final class PresenceStateMachine {
             
         case .checkOverrideExpiry:
             checkAndHandleExpiredOverride()
+
+        case .turnOff:
+            handleTurnOff()
         }
     }
     
@@ -120,6 +123,15 @@ public final class PresenceStateMachine {
     // MARK: - Event Handlers
     
     private func handleCalendarUpdate(_ newState: PresenceState) {
+        // Ignore calendar updates when system is off
+        guard currentMode != .off else {
+            uiLogger.logEvent("state.transition.ignored", details: [
+                "reason": "system-is-off",
+                "source": "calendar"
+            ])
+            return
+        }
+
         // Debounce: no-op if state unchanged
         guard newState != currentState else {
             uiLogger.logEvent("state.transition.ignored", details: [
@@ -168,8 +180,8 @@ public final class PresenceStateMachine {
             return
         }
         
-        // Switch to manual mode
-        if currentMode == .auto {
+        // Switch to manual mode (covers auto, off, and any other mode)
+        if currentMode != .manual {
             setMode(.manual)
         }
         
@@ -195,6 +207,15 @@ public final class PresenceStateMachine {
     }
     
     private func handleSystemAway() {
+        // Ignore system events when system is off
+        guard currentMode != .off else {
+            uiLogger.logEvent("state.transition.ignored", details: [
+                "reason": "system-is-off",
+                "source": "system"
+            ])
+            return
+        }
+
         // Store current state to restore later (unless we're already away)
         if currentState != .away {
             stateBeforeSystemAway = (currentState, currentSource)
@@ -205,6 +226,9 @@ public final class PresenceStateMachine {
     }
     
     private func handleSystemReturned() {
+        // Ignore system events when system is off
+        guard currentMode != .off else { return }
+
         // Restore previous state and source
         if let previousState = stateBeforeSystemAway {
             applyStateTransition(
@@ -234,7 +258,7 @@ public final class PresenceStateMachine {
         // by the stale manual source priority when it arrives after the sync.
         currentSource = .startup
         
-        // Switch to auto mode
+        // Switch to auto mode (works from manual or off mode)
         setMode(.auto)
         
         // Request calendar sync to immediately apply current calendar state
@@ -242,6 +266,26 @@ public final class PresenceStateMachine {
             "trigger": "resume-auto"
         ])
         onRequestCalendarSync?()
+    }
+
+    private func handleTurnOff() {
+        // Cancel any pending overrides or stabilization
+        manualOverrideExpiry = nil
+        expiryCheckTask?.cancel()
+        expiryCheckTask = nil
+        stabilizationTask?.cancel()
+        stabilizationTask = nil
+
+        // Reset source so future state can always re-enter cleanly
+        currentSource = .startup
+
+        // Switch to off mode and apply .off presence state
+        setMode(.off)
+        applyStateTransition(to: .off, source: .startup, forceUpdate: true)
+
+        uiLogger.logEvent("state.system.off", details: [
+            "trigger": "user-requested"
+        ])
     }
     
     private func handleStartupInitialize() {

@@ -37,8 +37,9 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         machine.onStateChanged = { [weak controller] state, source in
             controller?.updatePresenceState(state)
 
-            // Update calendar status label whenever calendar drives the state
-            if source == .calendar || source == .startup {
+            // Update calendar status label when calendar or startup drives state.
+            // Skip .off — that label is already set by updateModeDisplay(.off).
+            if source == .calendar || source == .startup, state != .off {
                 if state == .available {
                     controller?.setCalendarEngineStatus("Active")
                 } else if state == .unknown {
@@ -72,6 +73,20 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         
         controller.onManualOverride = { [weak machine] state in
             machine?.handleEvent(.manualOverride(state))
+        }
+
+        controller.onTurnOff = { [weak machine] in
+            machine?.handleEvent(.turnOff)
+        }
+
+        controller.onTimeoutChanged = { [weak machine] minutes in
+            // Persist to UserDefaults
+            ConfigurationManager.shared.setManualOverrideTimeoutMinutes(minutes)
+            // Apply immediately to the running state machine
+            machine?.manualOverrideTimeoutMinutes = minutes
+            lifecycleLogger.logEvent("override.timeout.updated", details: [
+                "minutes": minutes.map { String($0) } ?? "never"
+            ])
         }
 
         controller.setCalendarEngineStatus("Starting…")

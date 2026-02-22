@@ -9,4 +9,7 @@ public enum OperatingMode: String, Sendable, Codable {
     
     /// Manual mode: user override is active, calendar updates are ignored
     case manual
+    
+    /// Off mode: system is suspended — calendar sync disabled, light off, all events ignored until user acts
+    case off
 }

@@ -24,4 +24,7 @@ public enum StateEvent: Sendable {
     
     /// Check if manual override timeout has expired (internal timer event)
     case checkOverrideExpiry
+    
+    /// User requested to turn the system off (suspend calendar sync, light off)
+    case turnOff
 }

@@ -13,7 +13,14 @@ public struct StateTransition: Sendable {
         mode: OperatingMode
     ) -> (allowed: Bool, reason: String?) {
         
-        // System away always overrides everything
+        // In off mode, ignore everything except manual/startup sources (which re-enable the system)
+        if mode == .off {
+            if newSource == .calendar || newSource == .system {
+                return (false, "system-is-off")
+            }
+        }
+
+        // System away always overrides everything (except when system is off — handled above)
         if newSource == .system {
             return (true, nil)
         }
@@ -52,6 +59,8 @@ public struct StateTransition: Sendable {
             return .startup
         case .resumeAuto, .checkOverrideExpiry:
             return .manual // Mode-change events maintain manual source context
+        case .turnOff:
+            return .startup
         }
     }
     
@@ -75,6 +84,8 @@ public struct StateTransition: Sendable {
             return .unknown
         case .resumeAuto, .checkOverrideExpiry:
             return nil // These events trigger mode changes, not direct state changes
+        case .turnOff:
+            return .off
         }
     }
 }
