@@ -1,0 +1,17 @@
+# Build artifacts
+/build/
+/.build/
+*.xcarchive
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+.DS_Store
+
+# Swift Package Manager
+.swiftpm/
+
+# Environment and local
+.env
+.env.local

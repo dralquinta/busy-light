@@ -1,0 +1,173 @@
+# BusyLight macOS Agent
+
+A minimal menu bar application for managing presence state on MacOS Tahoe. The BusyLight agent runs entirely in the menu bar without requiring a Dock icon or foreground window, enabling low-overhead availability signaling.
+
+## Features
+
+- **Menu Bar Only**: No Dock icon or foreground windows
+- **Persistent Settings**: Configuration saved across application restarts
+- **Presence Modes**: Available, Busy, Away
+- **Device Integration Ready**: Network-based communication prepared (REST/WebSocket)
+- **Structured Logging**: Full activity tracking via `os_log`
+- **Sleep/Wake Resilient**: Remains active across system sleep cycles
+
+## Quick Start
+
+### Build
+
+```bash
+cd macos-agent
+xcodebuild -scheme BusyLight -configuration Debug
+```
+
+Or via Swift Package Manager:
+
+```bash
+swift build
+```
+
+### Run
+
+```bash
+xcodebuild -scheme BusyLight
+```
+
+Or:
+
+```bash
+.build/debug/BusyLight
+```
+
+The application will launch silently and display an icon in the macOS menu bar (upper-right corner of the screen).
+
+## Usage
+
+1. **Launch the application**: The menu bar icon will appear in the top-right corner
+2. **Click the icon** to open the dropdown menu
+3. **Toggle presence**: Click "Mark as Busy" or "Mark as Available"
+4. **View device status**: Menu shows current connection state to the busy-light device
+5. **Quit**: Select "Quit BusyLight" from the menu
+
+## Permissions
+
+- **No elevated permissions required** for basic operation
+- **Network access** will be required in a future phase when device communication is enabled
+
+## Architecture
+
+```
+Sources/BusyLight/
+├── main.swift              # Application entry point
+├── AppDelegate.swift       # Lifecycle management
+├── Models/
+│   ├── PresenceState.swift      # Available, Busy, Away
+│   ├── DeviceStatus.swift       # Device connection state
+│   └── AppConfiguration.swift   # Persistent settings
+├── Core/
+│   ├── Logger.swift             # Structured logging via os_log
+│   └── ConfigurationManager.swift # UserDefaults persistence
+└── UI/
+    └── StatusMenuController.swift # Menu bar icon and menu
+```
+
+## Configuration
+
+Settings are stored in `UserDefaults` under the suite `com.busylight.agent`. Configuration auto-loads on startup.
+
+**Persistent Settings:**
+- `app.presence_state`: Current presence mode (available/busy/away)
+- `app.device_network_address`: Device host/IP for REST/WebSocket
+- `app.device_network_port`: Device communication port (default: 8080)
+- `app.launch_on_startup`: Enable login item (not yet implemented)
+- `app.show_menu_bar_text`: Display presence state in menu bar
+
+## Logging
+
+View structured logs via the macOS log system:
+
+```bash
+log stream --predicate 'subsystem == "com.busylight.agent.*"' --level debug
+```
+
+Or filter by subsystem:
+
+```bash
+log stream --predicate 'subsystem == "com.busylight.agent.lifecycle"'
+log stream --predicate 'subsystem == "com.busylight.agent.ui"'
+log stream --predicate 'subsystem == "com.busylight.agent.configuration"'
+```
+
+## Testing
+
+Run the test suite:
+
+```bash
+xcodebuild test -scheme BusyLight
+```
+
+Or via Swift Package Manager:
+
+```bash
+swift test
+```
+
+**Test Coverage:**
+- `LaunchPersistenceTests`: Verify settings persist across application restarts
+- `SettingsTests`: Validate configuration storage and enum representations
+
+## Hardware Integration (Planned)
+
+The application skeleton is prepared for network-based device communication:
+
+1. **Phase 1** (current): Menu bar UI + settings persistence ✅
+2. **Phase 2** (next): REST/WebSocket adapter to sync presence state with device
+3. **Phase 3** (future): Advanced features (device discovery, multi-device support, etc.)
+
+## Expected Runtime Behavior
+
+- **Startup**: Logs startup event, loads configuration from UserDefaults, displays menu bar icon
+- **Menu interaction**: Toggling presence state logs change and updates menu display
+- **Shutdown**: Saves configuration, logs shutdown event
+- **System sleep/wake**: Application remains resident and active (no restart required)
+
+## Troubleshooting
+
+### Application appears in Dock
+
+The app is configured with activation policy `.prohibited` to hide the Dock icon. If it appears:
+
+- Force quit the application: `killall BusyLight`
+- Rebuild and relaunch
+
+### Settings not persisting
+
+Check `UserDefaults` defaults directly:
+
+```bash
+defaults read com.busylight.agent
+```
+
+Or review logs:
+
+```bash
+log stream --predicate 'subsystem == "com.busylight.agent.configuration"' --level debug
+```
+
+## Development Notes
+
+- **Minimum macOS**: Tahoe (12.0)
+- **Swift Version**: 5.5+
+- **No external dependencies**: Uses AppKit, Foundation, os_log only
+- **Architecture**: Event-driven with centralized state management
+
+Future phases will add:
+- Device communication layer (HTTP/WebSocket client)
+- Preferences window
+- Login item registration for auto-start
+- Dock menu fallback (if required)
+
+---
+
+**Version**: 0.1.0  
+**Status**: Active Development — Menu bar skeleton complete  
+**Next**: Device communication adapter

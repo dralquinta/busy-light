@@ -1,0 +1,31 @@
+# Xcode build artifacts
+build/
+DerivedData/
+*.xcarchive
+
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Xcode
+*.xcodeproj/**/xcshareddata/
+xcshareddata/
+.DS_Store
+*.playground
+
+# Build outputs
+*.app
+*.dSYM
+
+# Test artifacts
+.coverage/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.swiftpm
