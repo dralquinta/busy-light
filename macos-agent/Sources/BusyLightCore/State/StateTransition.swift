@@ -53,6 +53,8 @@ public struct StateTransition: Sendable {
             return .calendar
         case .manualOverride:
             return .manual
+        case .hotkeyPressed:
+            return .manual
         case .systemAway, .systemReturned:
             return .system
         case .startupInitialize:
@@ -74,6 +76,8 @@ public struct StateTransition: Sendable {
         case .calendarUpdated(let state):
             return state
         case .manualOverride(let state):
+            return state
+        case .hotkeyPressed(let state):
             return state
         case .systemAway:
             return .away

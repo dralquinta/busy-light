@@ -71,7 +71,14 @@ public final class PresenceStateMachine {
     /// Primary entry point for all state change requests.
     /// Validates transitions, enforces precedence, and prevents flapping.
     public func handleEvent(_ event: StateEvent) {
-        // Check for expired override before processing event
+        // Process resumeAuto (Ctrl+Cmd+4) immediately with absolute priority,
+        // bypassing any override or timeout checks
+        if case .resumeAuto = event {
+            handleResumeAuto()
+            return
+        }
+        
+        // Check for expired override before processing other events
         if currentMode == .manual {
             checkAndHandleExpiredOverride()
         }
@@ -90,7 +97,8 @@ public final class PresenceStateMachine {
             handleSystemReturned()
             
         case .resumeAuto:
-            handleResumeAuto()
+            // Already handled above with priority processing
+            break
             
         case .startupInitialize:
             handleStartupInitialize()
@@ -100,6 +108,9 @@ public final class PresenceStateMachine {
 
         case .turnOff:
             handleTurnOff()
+            
+        case .hotkeyPressed(let newState):
+            handleHotkeyOverride(newState)
         }
     }
     
@@ -206,6 +217,13 @@ public final class PresenceStateMachine {
         applyStateTransition(to: newState, source: .manual)
     }
     
+    private func handleHotkeyOverride(_ newState: PresenceState) {
+        // Hotkey override behaves identically to manual override.
+        // Both switch to manual mode and prevent calendar sync.
+        // This reuses the exact same logic as manual override.
+        handleManualOverride(newState)
+    }
+    
     private func handleSystemAway() {
         // Ignore system events when system is off
         guard currentMode != .off else {
@@ -249,21 +267,31 @@ public final class PresenceStateMachine {
     }
     
     private func handleResumeAuto() {
-        // Cancel any manual override
+        // === ABSOLUTE PRIORITY OPERATION ===
+        // This method is called BEFORE checking override expiry and other event processing.
+        // It unconditionally cancels any active override and resumes calendar control.
+        // Used by Ctrl+Cmd+4 hotkey to ensure user can always immediately regain calendar control.
+        
+        // Cancel any active manual override (regardless of remaining timeout)
         manualOverrideExpiry = nil
         expiryCheckTask?.cancel()
         expiryCheckTask = nil
+        
+        // Cancel any pending state stabilization to ensure immediate effect
+        stabilizationTask?.cancel()
+        stabilizationTask = nil
         
         // Reset source to startup so the incoming calendar update is not blocked
         // by the stale manual source priority when it arrives after the sync.
         currentSource = .startup
         
-        // Switch to auto mode (works from manual or off mode)
+        // Switch to auto mode immediately (works from manual or off mode)
         setMode(.auto)
         
-        // Request calendar sync to immediately apply current calendar state
+        // Request immediate calendar sync to apply current calendar state without delay
         uiLogger.logEvent("state.calendar.sync.requested", details: [
-            "trigger": "resume-auto"
+            "trigger": "resume-auto",
+            "priority": "absolute"
         ])
         onRequestCalendarSync?()
     }

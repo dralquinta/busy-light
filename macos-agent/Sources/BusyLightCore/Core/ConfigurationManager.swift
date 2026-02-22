@@ -51,9 +51,21 @@ public class ConfigurationManager {
         
         configuration.stateStabilizationSeconds = userDefaults.integer(forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
         
+        // Load hotkey bindings
+        if let savedBindings = userDefaults.dictionary(forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue) as? [String: NSNumber] {
+            var bindings: [String: UInt16] = [:]
+            for (state, keyCode) in savedBindings {
+                bindings[state] = keyCode.uint16Value
+            }
+            if !bindings.isEmpty {
+                configuration.hotkeyBindings = bindings
+            }
+        }
+        
         configLogger.logEvent("Configuration loaded successfully",
                             details: ["presenceState": configuration.presenceState.rawValue,
-                                    "deviceAddress": configuration.deviceNetworkAddress.isEmpty ? "(not set)" : configuration.deviceNetworkAddress])
+                                    "deviceAddress": configuration.deviceNetworkAddress.isEmpty ? "(not set)" : configuration.deviceNetworkAddress,
+                                    "hotkeyBindingsCount": String(configuration.hotkeyBindings.count)])
     }
     
     /// Saves current configuration to UserDefaults.
@@ -72,8 +84,12 @@ public class ConfigurationManager {
         userDefaults.set(timeoutValue, forKey: AppConfiguration.CodingKeys.manualOverrideTimeoutMinutes.rawValue)
         userDefaults.set(configuration.stateStabilizationSeconds, forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
         
+        // Save hotkey bindings
+        let bindingsDict = configuration.hotkeyBindings.mapValues { NSNumber(value: $0) }
+        userDefaults.set(bindingsDict, forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue)
+        
         userDefaults.synchronize()
-        configLogger.logEvent("Configuration saved")
+        configLogger.logEvent("Configuration saved", details: ["hotkeyBindingsCount": String(configuration.hotkeyBindings.count)])
     }
     
     // MARK: - Configuration Access
@@ -141,5 +157,33 @@ public class ConfigurationManager {
     public func setShowMenuBarText(_ show: Bool) {
         configuration.showMenuBarText = show
         saveConfiguration()
+    }
+    
+    // MARK: - Hotkey Configuration
+    
+    /// Retrieves the current hotkey bindings (state -> key code mapping).
+    /// Returns default bindings if none have been configured.
+    public func getHotkeyBindings() -> [PresenceState: UInt16] {
+        var result: [PresenceState: UInt16] = [:]
+        for (stateString, keyCode) in configuration.hotkeyBindings {
+            if let state = PresenceState(rawValue: stateString) {
+                result[state] = keyCode
+            }
+        }
+        return result
+    }
+    
+    /// Updates hotkey bindings and persists to UserDefaults.
+    public func setHotkeyBindings(_ bindings: [PresenceState: UInt16]) {
+        var stringKeyedBindings: [String: UInt16] = [:]
+        for (state, keyCode) in bindings {
+            stringKeyedBindings[state.rawValue] = keyCode
+        }
+        configuration.hotkeyBindings = stringKeyedBindings
+        saveConfiguration()
+        
+        configLogger.logEvent("hotkey.bindings.saved", details: [
+            "bindingsCount": String(bindings.count)
+        ])
     }
 }
