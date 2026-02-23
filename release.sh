@@ -370,8 +370,8 @@ create_dmg() {
     
     success "Created temporary DMG"
     
-    # Mount and customize
-    log "Customizing DMG layout..."
+    # Mount and apply custom icon
+    log "Applying custom icon to DMG..."
     
     hdiutil attach "$temp_dmg" -mountpoint "$mount_dir" -nobrowse &> /dev/null
     
@@ -396,39 +396,12 @@ create_dmg() {
         fi
     fi
     
-    # Set window properties (simplified to avoid Finder hanging)
-    osascript <<EOF &>/dev/null || warn "Could not set custom DMG layout"
-tell application "Finder"
-    tell disk "$volume_name"
-        open
-        set current view of container window to icon view
-        set toolbar visible of container window to false
-        set statusbar visible of container window to false
-        set the bounds of container window to {400, 100, 900, 450}
-        set viewOptions to the icon view options of container window
-        set arrangement of viewOptions to not arranged
-        set icon size of viewOptions to 96
-        set position of item "$app_name" of container window to {125, 180}
-        set position of item "Applications" of container window to {375, 180}
-        close
-        update without registering applications
-    end tell
-end tell
-EOF
+    # Skip Finder window customization to avoid locking the volume
+    # The DMG will work fine without custom positioning
+    log "Skipping Finder customization (prevents unmount issues)"
     
     # Sync to ensure all writes complete
     sync
-    sleep 1
-    
-    # Try to eject via Finder first (cleaner than forced detach)
-    osascript <<EOF &>/dev/null || true
-tell application "Finder"
-    if disk "$volume_name" exists then
-        eject disk "$volume_name"
-    end if
-end tell
-EOF
-    
     sleep 1
     
     # Unmount (with retries if busy)

@@ -473,45 +473,30 @@ rm dist/BusyLight-1.0.0.dmg
 
 #### Issue: "Failed to unmount DMG after 5 attempts"
 
-**Cause**: Finder window or process accessing the mounted DMG
+**Cause**: The Finder window customization (AppleScript) opens Finder, which locks the volume
 
-**Solution**:
+**This issue has been fixed**: The script no longer performs Finder window customization to avoid this problem. The DMG will still have:
+- ✅ Custom volume icon
+- ✅ Applications symlink  
+- ✅ All files accessible
+- ⚠️ No custom window positioning (minor cosmetic feature)
+
+**If you still encounter this issue:**
+
 ```bash
-# Option 1: Close Finder windows and retry
-# Close any Finder windows showing /Volumes/BusyLight
-# Then retry the release command
+# Option 1: Quick fix - restart Finder and unmount
+killall Finder && sleep 2 && diskutil unmount force /Volumes/BusyLight
 
-# Option 2: Force unmount manually
-hdiutil detach /Volumes/BusyLight -force
-
-# Option 3: Check what's holding the volume
+# Option 2: Check what's holding the volume
 lsof /Volumes/BusyLight
 
-# Option 4: Kill Finder if needed (will restart automatically)
-killall Finder
+# Option 3: If an app is running from the DMG, kill it first
+ps aux | grep BusyLight
+# Then: kill -9 <PID>
 
-# Option 5: Clean up and retry
+# Option 4: Clean up and retry
 rm -rf dist/BusyLight-*.dmg
 ./release.sh v1.0.0 --skip-sign --dry-run
-```
-
-**Prevention**: 
-- Don't manually open or run the app from the DMG during creation
-- Don't browse the mounted DMG while script is running
-- Close all Finder windows before running release
-- The script now automatically:
-  - Cleans up any previous mounts before starting
-  - Tries Finder eject first (clean)
-  - Falls back to `diskutil unmount` 
-  - Then tries `hdiutil detach -force`
-  - Kills holding processes automatically
-  - Restarts Finder as last resort
-  - Shows diagnostic output on failure
-
-**Quick Fix**: If you need to clean up manually right now:
-```bash
-# Kill Finder and unmount
-killall Finder && sleep 2 && diskutil unmount force /Volumes/BusyLight
 ```
 
 #### Issue: "Modified files in git after dry-run"
