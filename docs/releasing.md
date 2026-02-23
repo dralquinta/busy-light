@@ -7,6 +7,7 @@ This guide describes how to create and publish a new version of BusyLight for ma
 - [Quick Start](#quick-start)
 - [Prerequisites](#prerequisites)
 - [Release Process](#release-process)
+- [Testing and Validation (Dry Run)](#testing-and-validation-dry-run)
 - [Code Signing and Notarization](#code-signing-and-notarization)
 - [GitHub Actions (CI)](#github-actions-ci)
 - [Troubleshooting](#troubleshooting)
@@ -22,13 +23,16 @@ To create a complete release (signed and published):
 git checkout main
 git pull
 
-# 2. Run the release script (from project root)
+# 2. Validate everything is ready (recommended)
+./scripts/validate-release.sh
+
+# 3. Run the release script (from project root)
 ./release.sh v1.0.0
 
-# 3. Verify the DMG
+# 4. Verify the DMG
 open dist/BusyLight-1.0.0.dmg
 
-# 4. Publish (push the tag)
+# 5. Publish (push the tag)
 git push origin v1.0.0
 ```
 
@@ -93,7 +97,28 @@ git status
 
 # Verify tests pass
 ./build.sh test
+
+# Run comprehensive pre-release validation
+./scripts/validate-release.sh
 ```
+
+**What the validation script checks:**
+- ✅ Git repository state (branch, uncommitted changes, untracked files)
+- ✅ Build system readiness (Swift, Xcode, dependencies)
+- ✅ Source code compilation
+- ✅ Test suite execution
+- ✅ Info.plist validity
+- ✅ Documentation (README, CHANGELOG)
+- ✅ Code signing setup (if configured)
+- ✅ GitHub CLI authentication
+- ✅ Release artifacts structure
+
+**Exit codes:**
+- `0` = All checks passed → Proceed with release
+- `1` = Critical failures → Fix issues before releasing
+- `2` = Warnings only → Can proceed with caution
+
+> **💡 Tip:** Fix all critical issues before proceeding. Warnings can usually be ignored for development releases but should be addressed for production.
 
 ### 2. Choose Version Number
 
@@ -192,6 +217,289 @@ git push origin v1.0.0
 3. Verify the DMG is attached
 4. Edit release notes if needed
 5. Test DMG download
+
+---
+
+## Testing and Validation (Dry Run)
+
+### Why Use Dry Run?
+
+Before publishing to GitHub, use dry-run mode to:
+- ✅ Test the build process without creating a release
+- ✅ Verify DMG creation and signing
+- ✅ Catch issues early before publishing
+- ✅ Validate version numbers and metadata
+- ✅ Test on local machine risk-free
+
+### Pre-Release Validation
+
+Run the validation script **before** creating a release:
+
+```bash
+./scripts/validate-release.sh
+```
+
+This checks:
+- ✅ Git status (no uncommitted changes, correct branch)
+- ✅ Build system (Swift, Xcode, dependencies)
+- ✅ Source code builds successfully
+- ✅ Tests pass
+- ✅ Info.plist validity
+- ✅ Version numbers
+- ✅ Documentation (README, CHANGELOG)
+- ✅ Code signing setup (if configured)
+- ✅ GitHub CLI authentication
+- ✅ Release artifacts
+
+**Exit codes**:
+- `0` = All checks passed
+- `1` = Critical failures (must fix)
+- `2` = Warnings only (can proceed)
+
+### Dry Run Workflow
+
+#### Step 1: Validate Environment
+
+```bash
+# Run pre-release validation
+./scripts/validate-release.sh
+
+# Fix any critical issues before proceeding
+```
+
+#### Step 2: Dry Run Without Signing
+
+Test the build and DMG creation locally:
+
+```bash
+# Build and create DMG without signing or publishing
+./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+This will:
+1. ✅ Update Info.plist versions
+2. ✅ Build in Release mode
+3. ✅ Apply ad-hoc signature (for local testing)
+4. ✅ Create DMG with custom icon
+5. ❌ Skip notarization
+6. ❌ Skip GitHub publishing
+
+#### Step 3: Verify the DMG
+
+```bash
+# Check DMG was created
+ls -lh dist/BusyLight-1.0.0.dmg
+
+# Mount and inspect
+open dist/BusyLight-1.0.0.dmg
+
+# Verify contents:
+# ✓ BusyLight.app present
+# ✓ /Applications symlink works
+# ✓ Custom icon visible
+# ✓ App can be dragged to Applications
+```
+
+#### Step 4: Test the App
+
+```bash
+# Copy to Applications
+cp -R /Volumes/BusyLight/BusyLight.app /tmp/BusyLight.app
+
+# Launch and test
+open /tmp/BusyLight.app
+
+# Verify:
+# ✓ App launches without errors
+# ✓ Menu bar icon appears
+# ✓ Status menu works
+# ✓ Calendar permission prompt (if first run)
+# ✓ Hotkey registration works
+# ✓ All features functional
+```
+
+#### Step 5: Dry Run With Signing (Optional)
+
+If you have code signing configured, test the full signing process:
+
+```bash
+# Build, sign, and notarize but DON'T publish
+./release.sh v1.0.0 --dry-run
+```
+
+This will:
+1. ✅ Update Info.plist versions
+2. ✅ Build in Release mode
+3. ✅ Sign with Developer ID
+4. ✅ Notarize with Apple (can take 5-15 minutes)
+5. ✅ Staple notarization ticket
+6. ✅ Create DMG
+7. ❌ Skip GitHub publishing
+
+**Verify signing and notarization**:
+
+```bash
+# Verify signature
+codesign --verify --deep --strict --verbose=2 BusyLight.app
+codesign -dvvv BusyLight.app
+
+# Verify notarization
+spctl --assess --verbose=2 --type execute BusyLight.app
+
+# Verify stapling
+xcrun stapler validate BusyLight.app
+
+# Should see:
+# "The validate action worked!"
+```
+
+#### Step 6: Clean Up Test Artifacts
+
+```bash
+# Remove test app
+rm -rf /tmp/BusyLight.app
+
+# Unmount DMG
+hdiutil detach /Volumes/BusyLight
+
+# Optionally clean dist/ (will be recreated)
+# rm -rf dist/
+```
+
+### Testing Specific Scenarios
+
+#### Test Version Stamping
+
+Verify Info.plist is updated correctly:
+
+```bash
+# After dry run, check versions
+plutil -p macos-agent/Sources/BusyLight/Resources/Info.plist | grep Version
+
+# Should show:
+# "CFBundleShortVersionString" => "1.0.0"
+# "CFBundleVersion" => "1.0.0"
+```
+
+#### Test Pre-Release Versions
+
+```bash
+# Test beta release
+./release.sh v1.0.0-beta.1 --skip-sign --dry-run
+
+# Verify version in Info.plist
+plutil -extract CFBundleVersion raw macos-agent/Sources/BusyLight/Resources/Info.plist
+# Should output: 1.0.0-beta.1
+```
+
+#### Test DMG Customization
+
+Verify the DMG has the custom icon:
+
+```bash
+# Mount DMG
+hdiutil attach dist/BusyLight-1.0.0.dmg
+
+# Check volume icon (should be custom busy-light-icon.png)
+ls -la /Volumes/BusyLight/.VolumeIcon.icns
+
+# Visual check: Open Finder and verify icon
+open /Volumes/BusyLight
+```
+
+### Troubleshooting Dry Run Issues
+
+#### Issue: "Version not updated in Info.plist"
+
+**Diagnosis**:
+```bash
+plutil -p macos-agent/Sources/BusyLight/Resources/Info.plist | grep Version
+```
+
+**Solution**:
+```bash
+# Manually stamp version
+plutil -replace CFBundleShortVersionString -string "1.0.0" macos-agent/Sources/BusyLight/Resources/Info.plist
+plutil -replace CFBundleVersion -string "1.0.0" macos-agent/Sources/BusyLight/Resources/Info.plist
+```
+
+#### Issue: "DMG creation failed"
+
+**Diagnosis**:
+```bash
+# Check if BusyLight.app exists
+ls -la BusyLight.app
+
+# Check disk space
+df -h .
+```
+
+**Solution**:
+```bash
+# Clean and rebuild
+rm -rf BusyLight.app dist/
+./build.sh release
+./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+#### Issue: "App doesn't launch after DMG install"
+
+**Diagnosis**:
+```bash
+# Check executable permissions
+ls -la /Volumes/BusyLight/BusyLight.app/Contents/MacOS/BusyLight
+
+# Check bundle structure
+tree /Volumes/BusyLight/BusyLight.app/Contents/
+```
+
+**Solution**:
+```bash
+# Ensure executable bit is set
+chmod +x BusyLight.app/Contents/MacOS/BusyLight
+
+# Rebuild DMG
+rm dist/BusyLight-1.0.0.dmg
+./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+### Complete Dry Run Checklist
+
+Before publishing the actual release:
+
+- [ ] Pre-release validation passed: `./scripts/validate-release.sh`
+- [ ] Dry run completes successfully
+- [ ] DMG created in `dist/` directory
+- [ ] DMG mounts without errors
+- [ ] App icon visible in DMG window
+- [ ] /Applications symlink present
+- [ ] App can be copied to /Applications
+- [ ] App launches without errors
+- [ ] Menu bar icon appears
+- [ ] Status menu opens and works
+- [ ] All features functional (calendar, hotkeys, etc.)
+- [ ] No permission errors
+- [ ] Version number correct in Info.plist
+- [ ] Signature valid (if signed): `codesign --verify`
+- [ ] Notarization OK (if notarized): `spctl --assess`
+
+### Ready to Release?
+
+Once dry run validation is complete:
+
+```bash
+# 1. Clean dry run artifacts (optional)
+rm -rf dist/
+
+# 2. Run actual release (creates and publishes to GitHub)
+./release.sh v1.0.0
+
+# 3. Push the tag
+git push origin v1.0.0
+
+# 4. Verify on GitHub
+gh release view v1.0.0
+```
 
 ---
 
@@ -453,6 +761,7 @@ plutil -lint /Volumes/BusyLight/BusyLight.app/Contents/Info.plist
 
 Before publishing:
 
+- [ ] Pre-release validation passed: `./scripts/validate-release.sh`
 - [ ] Tests pass: `./build.sh test`
 - [ ] Version number is correct
 - [ ] CHANGELOG.md updated (if applicable)
