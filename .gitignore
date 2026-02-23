@@ -2,6 +2,8 @@
 /build/
 /.build/
 *.xcarchive
+/BusyLight.app/
+/dist/
 
 # Xcode
 *.xcodeproj/xcuserdata/

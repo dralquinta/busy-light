@@ -359,12 +359,20 @@ xcrun stapler validate BusyLight.app
 # Remove test app
 rm -rf /tmp/BusyLight.app
 
-# Unmount DMG
-hdiutil detach /Volumes/BusyLight
+# Unmount DMG (force if necessary)
+hdiutil detach /Volumes/BusyLight -force
 
 # Optionally clean dist/ (will be recreated)
 # rm -rf dist/
+
+# Reset source Info.plist to default version (if not committing)
+git checkout macos-agent/Sources/BusyLight/Resources/Info.plist
 ```
+
+**Important:** The dry-run modifies the source `Info.plist` to stamp versions. After testing:
+- **Option 1:** Reset it with `git checkout macos-agent/Sources/BusyLight/Resources/Info.plist`
+- **Option 2:** Keep it for the actual release (skip this step)
+- **Option 3:** Commit it if you want to track version in source control
 
 ### Testing Specific Scenarios
 
@@ -461,6 +469,43 @@ chmod +x BusyLight.app/Contents/MacOS/BusyLight
 # Rebuild DMG
 rm dist/BusyLight-1.0.0.dmg
 ./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+#### Issue: "Failed to unmount DMG after 5 attempts"
+
+**Cause**: Finder window or process accessing the mounted DMG
+
+**Solution**:
+```bash
+# Close any Finder windows showing /Volumes/BusyLight
+
+# Force unmount
+hdiutil detach /Volumes/BusyLight -force
+
+# If still stuck, find processes using it
+lsof | grep BusyLight
+
+# Kill specific process if needed
+# kill <PID>
+
+# Try release again
+./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+#### Issue: "Modified files in git after dry-run"
+
+**Cause**: Release script modifies source Info.plist and may leave build artifacts
+
+**Solution**:
+```bash
+# Reset source Info.plist
+git checkout macos-agent/Sources/BusyLight/Resources/Info.plist
+
+# Clean build artifacts (now in .gitignore)
+rm -rf BusyLight.app dist/
+
+# Verify clean state
+git status
 ```
 
 ### Complete Dry Run Checklist

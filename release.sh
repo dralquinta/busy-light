@@ -413,18 +413,41 @@ tell application "Finder"
 end tell
 EOF
     
-    # Unmount
-    hdiutil detach "$mount_dir" &> /dev/null || true
+    # Unmount (with retries if busy)
+    log "Unmounting DMG..."
+    local unmount_attempts=0
+    while [[ $unmount_attempts -lt 5 ]]; do
+        if hdiutil detach "$mount_dir" -force &> /dev/null; then
+            success "Unmounted DMG"
+            break
+        fi
+        unmount_attempts=$((unmount_attempts + 1))
+        if [[ $unmount_attempts -lt 5 ]]; then
+            warn "Unmount attempt $unmount_attempts failed, retrying..."
+            sleep 2
+        else
+            fail "Failed to unmount DMG after 5 attempts. Close any Finder windows and try again."
+        fi
+    done
     
     # Convert to compressed read-only
     log "Compressing DMG..."
-    hdiutil convert "$temp_dmg" \
+    if hdiutil convert "$temp_dmg" \
         -format UDZO \
         -imagekey zlib-level=9 \
         -o "$output_dmg" \
-        &> /dev/null
+        2>&1 | grep -v "^$"; then
+        # If there was output, it might be an error
+        if [[ ! -f "$output_dmg" ]]; then
+            fail "DMG compression failed"
+        fi
+    fi
     
     rm -f "$temp_dmg"
+    
+    if [[ ! -f "$output_dmg" ]]; then
+        fail "DMG file was not created: $output_dmg"
+    fi
     
     success "DMG created: $output_dmg"
     log "Size: $(du -h "$output_dmg" | cut -f1)"

@@ -1,36 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Required: calendar access usage description shown in the system prompt -->
-    <key>NSCalendarsUsageDescription</key>
-    <string>BusyLight reads your calendar to automatically set your availability status based on current events.</string>
-
-    <!-- Required: calendar full access (macOS 14+) -->
-    <key>NSCalendarsFullAccessUsageDescription</key>
-    <string>BusyLight reads your calendar events to automatically detect when you are busy, tentative, or available and reflect that on your presence indicator light.</string>
-
-    <key>CFBundleIdentifier</key>
-    <string>com.busylight.agent</string>
-
-    <key>CFBundleName</key>
-    <string>BusyLight</string>
-
-    <key>CFBundleDisplayName</key>
-    <string>BusyLight</string>
-
-    <key>CFBundleVersion</key>
-    <string>1</string>
-
-    <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
-
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-
-    <!-- Run as menu bar only agent — no Dock icon -->
-    <key>LSUIElement</key>
-    <true/>
+	<key>CFBundleDisplayName</key>
+	<string>BusyLight</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.busylight.agent</string>
+	<key>CFBundleName</key>
+	<string>BusyLight</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>BusyLight reads your calendar events to automatically detect when you are busy, tentative, or available and reflect that on your presence indicator light.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>BusyLight reads your calendar to automatically set your availability status based on current events.</string>
 </dict>
 </plist>
