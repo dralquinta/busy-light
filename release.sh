@@ -435,18 +435,40 @@ create_dmg() {
         fi
     done
     
-    # Convert to compressed read-only
-    log "Compressing DMG..."
-    if hdiutil convert "$temp_dmg" \
-        -format UDZO \
-        -imagekey zlib-level=9 \
-        -o "$output_dmg" \
-        2>&1 | grep -v "^$"; then
-        # If there was output, it might be an error
-        if [[ ! -f "$output_dmg" ]]; then
-            fail "DMG compression failed"
-        fi
+    # Wait for system to fully release the DMG file
+    log "Waiting for system to release DMG file..."
+    sync
+    sleep 3
+    
+    # Verify temp DMG is accessible
+    if [[ ! -f "$temp_dmg" ]]; then
+        fail "Temporary DMG file not found: $temp_dmg"
     fi
+    
+    # Convert to compressed read-only (with retries)
+    log "Compressing DMG..."
+    local convert_attempts=0
+    local convert_success=false
+    
+    while [[ $convert_attempts -lt 3 ]] && [[ "$convert_success" == "false" ]]; do
+        convert_attempts=$((convert_attempts + 1))
+        
+        if hdiutil convert "$temp_dmg" \
+            -format UDZO \
+            -imagekey zlib-level=9 \
+            -o "$output_dmg" \
+            2>&1; then
+            convert_success=true
+        else
+            if [[ $convert_attempts -lt 3 ]]; then
+                warn "Compression attempt $convert_attempts failed, retrying..."
+                sync
+                sleep 2
+            else
+                fail "DMG compression failed after $convert_attempts attempts"
+            fi
+        fi
+    done
     
     rm -f "$temp_dmg"
     

@@ -440,6 +440,9 @@ ls -la BusyLight.app
 
 # Check disk space
 df -h .
+
+# Check for stuck DMG mounts
+mount | grep BusyLight
 ```
 
 **Solution**:
@@ -447,6 +450,26 @@ df -h .
 # Clean and rebuild
 rm -rf BusyLight.app dist/
 ./build.sh release
+./release.sh v1.0.0 --skip-sign --dry-run
+```
+
+#### Issue: "hdiutil: convert failed - Resource temporarily unavailable"
+
+**Cause**: System hasn't fully released the temporary DMG file after unmounting
+
+**This issue has been fixed**: The script now:
+- Waits 3 seconds after unmounting before compression
+- Syncs filesystem buffers
+- Retries compression up to 3 times with delays
+- Shows clear error messages
+
+**If you still encounter this:**
+```bash
+# Clean up any temp DMG files
+rm -f /tmp/temp-*.dmg
+
+# Clean dist and retry
+rm -rf dist/
 ./release.sh v1.0.0 --skip-sign --dry-run
 ```
 
