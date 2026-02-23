@@ -44,10 +44,11 @@ The application will launch silently and display an icon in the macOS menu bar (
 
 1. **Launch the application**: The menu bar icon will appear in the top-right corner
 2. **Click the icon** to open the dropdown menu
-3. **Toggle presence**: Click "Mark as Busy" or "Mark as Available"
-4. **View device status**: Menu shows current connection state to the busy-light device
-5. **Configure device address**: Open `Device` → `Configure Device Address...`
-5. **Quit**: Select "Quit BusyLight" from the menu
+3. **Choose mode**: `Mode` → `Automatic` (calendar-driven) or `Manual Override`
+4. **Set manual status** (manual mode only): `Manual Status` → Available/Tentative/Busy
+5. **View device status**: Menu shows online/offline and last sync time
+6. **Settings**: Configure WLED host and preset IDs via `Settings…`
+7. **Quit**: Select "Quit BusyLight" from the menu
 
 ## Permissions
 
@@ -189,6 +190,21 @@ The application skeleton is prepared for network-based device communication:
 - **System sleep/wake**: Application remains resident and active (no restart required)
 
 ## Troubleshooting
+
+### Menu bar UI (Production)
+
+The production menu bar UI is intentionally minimal and includes:
+
+- **Status**: Current presence state
+- **Mode**: Automatic or Manual Override
+- **Manual Status**: Available, Tentative, Busy (manual mode only)
+- **Device**: Online/Offline indicator and last sync timestamp
+- **Calendar**: Current calendar engine status
+- **Override Timeout**: Manual override auto-resume timeout (manual mode only)
+- **Settings…**: WLED host + preset IDs
+- **Quit**
+
+Debug-only items (calendar scan, simulated away/return, hotkey debug) are shown only in Debug builds.
 
 ### Application appears in Dock
 

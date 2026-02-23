@@ -7,14 +7,19 @@ public class StatusMenuController {
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
     private var statusText: NSMenuItem?
-    private var toggleMenuItem: NSMenuItem?
-    private var resumeCalendarItem: NSMenuItem?
+    private var modeMenuItem: NSMenuItem?
+    private var autoModeItem: NSMenuItem?
+    private var manualModeItem: NSMenuItem?
+    private var manualOverrideMenuItem: NSMenuItem?
+    private var manualOverrideItems: [NSMenuItem] = []
     private var turnOffMenuItem: NSMenuItem?
     private var deviceStatusItem: NSMenuItem?
     private var deviceConnectedItem: NSMenuItem?
     private var deviceConnectionStatusItem: NSMenuItem?
-    private var configureDeviceAddressItem: NSMenuItem?
+    private var deviceLastSyncItem: NSMenuItem?
     private var calendarStatusItem: NSMenuItem?
+    private var settingsItem: NSMenuItem?
+    private var timeoutMenuItem: NSMenuItem?
 
     /// The state currently shown in the menu bar icon and status text.
     private var currentDisplayState: PresenceState = .available
@@ -87,19 +92,40 @@ public class StatusMenuController {
         menu.addItem(statusText!)
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Toggle presence state
-        toggleMenuItem = NSMenuItem(title: "Mark as Busy", action: #selector(togglePresenceState), keyEquivalent: "")
-        toggleMenuItem?.target = self
-        menu.addItem(toggleMenuItem!)
 
-        // Resume calendar control (hidden until a manual override is active)
-        resumeCalendarItem = NSMenuItem(title: "Resume Calendar Control",
-                                        action: #selector(resumeCalendarControl),
-                                        keyEquivalent: "")
-        resumeCalendarItem?.target = self
-        resumeCalendarItem?.isHidden = true
-        menu.addItem(resumeCalendarItem!)
+        // Mode selection
+        let modeMenu = NSMenu(title: "Mode")
+
+        autoModeItem = NSMenuItem(title: "Automatic", action: #selector(selectAutoMode), keyEquivalent: "")
+        autoModeItem?.target = self
+        modeMenu.addItem(autoModeItem!)
+
+        manualModeItem = NSMenuItem(title: "Manual Override", action: #selector(selectManualMode), keyEquivalent: "")
+        manualModeItem?.target = self
+        modeMenu.addItem(manualModeItem!)
+
+        modeMenuItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
+        modeMenuItem?.submenu = modeMenu
+        menu.addItem(modeMenuItem!)
+
+        // Manual override actions (shown only in manual mode)
+        let manualOverrideMenu = NSMenu(title: "Manual Status")
+        let manualStates: [PresenceState] = [.available, .tentative, .busy]
+        manualOverrideItems = manualStates.map { state in
+            let item = NSMenuItem(
+                title: "Set \(state.displayName)",
+                action: #selector(setManualOverride(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = state.rawValue
+            manualOverrideMenu.addItem(item)
+            return item
+        }
+        manualOverrideMenuItem = NSMenuItem(title: "Manual Status", action: nil, keyEquivalent: "")
+        manualOverrideMenuItem?.submenu = manualOverrideMenu
+        manualOverrideMenuItem?.isHidden = true
+        menu.addItem(manualOverrideMenuItem!)
 
         // Turn Off item — suspends all syncing, visible in auto/manual mode
         turnOffMenuItem = NSMenuItem(title: "Turn Off BusyLight",
@@ -109,7 +135,7 @@ public class StatusMenuController {
         menu.addItem(turnOffMenuItem!)
         
         // Device status
-        deviceStatusItem = NSMenuItem(title: "Device: Disconnected", action: nil, keyEquivalent: "")
+        deviceStatusItem = NSMenuItem(title: "Device: Offline", action: nil, keyEquivalent: "")
         menu.addItem(deviceStatusItem!)
 
         // Device configuration (inline items)
@@ -119,11 +145,8 @@ public class StatusMenuController {
         deviceConnectionStatusItem = NSMenuItem(title: "Status: Unknown", action: nil, keyEquivalent: "")
         menu.addItem(deviceConnectionStatusItem!)
 
-        configureDeviceAddressItem = NSMenuItem(title: "Configure Device Address…",
-                            action: #selector(configureDeviceAddress),
-                            keyEquivalent: "")
-        configureDeviceAddressItem?.target = self
-        menu.addItem(configureDeviceAddressItem!)
+        deviceLastSyncItem = NSMenuItem(title: "Last sync: Not yet", action: nil, keyEquivalent: "")
+        menu.addItem(deviceLastSyncItem!)
 
         // Calendar engine status
         calendarStatusItem = NSMenuItem(title: "Calendar: Starting…", action: nil, keyEquivalent: "")
@@ -144,10 +167,11 @@ public class StatusMenuController {
             timeoutMenu.addItem(item)
             return item
         }
-        let timeoutParent = NSMenuItem(title: "Override Timeout", action: nil, keyEquivalent: "")
-        timeoutParent.submenu = timeoutMenu
-        menu.addItem(timeoutParent)
+        timeoutMenuItem = NSMenuItem(title: "Override Timeout", action: nil, keyEquivalent: "")
+        timeoutMenuItem?.submenu = timeoutMenu
+        menu.addItem(timeoutMenuItem!)
 
+        #if DEBUG
         menu.addItem(NSMenuItem.separator())
 
         // Debug submenu — helps verify away/return and manual override transitions without locking
@@ -210,11 +234,12 @@ public class StatusMenuController {
         let debugParent = NSMenuItem(title: "Debug", action: nil, keyEquivalent: "")
         debugParent.submenu = debugMenu
         menu.addItem(debugParent)
+        #endif
 
         menu.addItem(NSMenuItem.separator())
-        let preferencesItem = NSMenuItem(title: "Preferences", action: #selector(openPreferences), keyEquivalent: ",")
-        preferencesItem.target = self
-        menu.addItem(preferencesItem)
+        settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settingsItem?.target = self
+        menu.addItem(settingsItem!)
         
         // Quit
         let quitItem = NSMenuItem(title: "Quit BusyLight", action: #selector(quitApp), keyEquivalent: "q")
@@ -239,13 +264,9 @@ public class StatusMenuController {
         currentDisplayState = state
         statusText?.title = "Status: \(state.displayName)"
 
-        // Toggle label: always offers the opposite of the current displayed state.
-        let toggleTarget: PresenceState = state == .available ? .busy : .available
-        let prefix = currentMode == .manual ? "Manually " : ""
-        toggleMenuItem?.title = "\(prefix)Mark as \(toggleTarget.displayName)"
-
         // Update button icon color based on state
         updateButtonAppearance(for: state)
+        updateManualOverrideCheckmarks()
 
         uiLogger.logEvent("Presence state updated", details: ["state": state.rawValue])
     }
@@ -258,23 +279,19 @@ public class StatusMenuController {
         switch mode {
         case .off:
             calendarStatusItem?.title = "Calendar: Disabled"
-            resumeCalendarItem?.isHidden = false
             turnOffMenuItem?.isHidden = true
         case .manual:
             calendarStatusItem?.title = "Calendar: Overridden"
-            resumeCalendarItem?.isHidden = false
             turnOffMenuItem?.isHidden = false
         case .auto:
             // Show "Resuming…" until the first calendar scan delivers a result
             calendarStatusItem?.title = "Calendar: Resuming…"
-            resumeCalendarItem?.isHidden = true
             turnOffMenuItem?.isHidden = false
         }
-        
-        // Update toggle button prefix
-        let toggleTarget: PresenceState = currentDisplayState == .available ? .busy : .available
-        let prefix = mode == .manual ? "Manually " : ""
-        toggleMenuItem?.title = "\(prefix)Mark as \(toggleTarget.displayName)"
+
+        manualOverrideMenuItem?.isHidden = mode != .manual
+        updateModeCheckmarks()
+        updateTimeoutVisibility(for: mode)
         
         uiLogger.logEvent("Mode display updated", details: ["mode": mode.rawValue])
     }
@@ -294,8 +311,8 @@ public class StatusMenuController {
     /// DEPRECATED: State machine now handles this via .systemReturned event
     public func clearAwayState() {
         currentMode = .auto
-        resumeCalendarItem?.isHidden = true
         calendarStatusItem?.title = "Calendar: Resuming…"
+        updateModeCheckmarks()
         uiLogger.logEvent("system.presence.away.cleared")
     }
 
@@ -304,13 +321,13 @@ public class StatusMenuController {
     /// DEPRECATED: State machine now handles this via .calendarUpdated event
     public func applyCalendarState(_ state: PresenceState) {
         currentMode = .auto
-        resumeCalendarItem?.isHidden = true
         if state == .available {
             calendarStatusItem?.title = "Calendar: Active"
         } else {
             calendarStatusItem?.title = "Calendar: \(state.displayName) ●"
         }
         updatePresenceState(state)
+        updateModeCheckmarks()
     }
 
     /// Called when the calendar engine starts or stops to update the menu label.
@@ -319,11 +336,7 @@ public class StatusMenuController {
     }
     
     public func updateDeviceStatus(_ status: DeviceStatus) {
-        deviceStatusItem?.title = "Device: \(status.displayText)"
-
-        if let error = status.errorMessage {
-            deviceStatusItem?.title = "Device: \(status.displayText) - \(error)"
-        }
+        deviceStatusItem?.title = deviceStatusTitle(for: status)
 
         uiLogger.logEvent("Device status updated", details: ["state": status.connectionState.rawValue])
     }
@@ -335,16 +348,17 @@ public class StatusMenuController {
         
         let statusText: String
         if devices.isEmpty {
-            statusText = "Devices: None configured"
+            statusText = "Device: Configuration missing"
         } else if offlineCount == 0 {
-            statusText = "Devices: \(onlineCount) online ●"
+            statusText = "Device: Online"
         } else if onlineCount == 0 {
-            statusText = "Devices: All offline"
+            statusText = "Device: Offline"
         } else {
             statusText = "Devices: \(onlineCount) online, \(offlineCount) offline"
         }
         
         deviceStatusItem?.title = statusText
+        deviceLastSyncItem?.title = "Last sync: \(formatLastSync(from: devices))"
         
         // Build tooltip with individual device details
         var tooltip = "WLED Devices:\n"
@@ -371,11 +385,16 @@ public class StatusMenuController {
     public func updateConfiguredDevice(address: String?, status: DeviceConnectionStatus) {
         if let address = address, !address.isEmpty {
             deviceConnectedItem?.title = "Connected to: \(address)"
+            deviceConnectionStatusItem?.title = "Status: \(status.displayText)"
         } else {
             deviceConnectedItem?.title = "Connected to: Not configured"
+            deviceConnectionStatusItem?.title = "Status: Configuration required"
         }
 
-        deviceConnectionStatusItem?.title = "Status: \(status.displayText)"
+        if address == nil || address?.isEmpty == true {
+            deviceStatusItem?.title = "Device: Configuration missing"
+            deviceLastSyncItem?.title = "Last sync: Not yet"
+        }
 
         uiLogger.logEvent("device.configured.status.updated", details: [
             "address": address?.isEmpty == false ? address! : "(none)",
@@ -416,17 +435,18 @@ public class StatusMenuController {
 
     // MARK: - Action Handlers
 
-    @objc private func togglePresenceState() {
-        let newState: PresenceState = currentDisplayState == .available ? .busy : .available
-        onManualOverride?(newState)
-        uiLogger.logEvent("Presence state toggle requested",
-                          details: ["from": currentDisplayState.rawValue, "to": newState.rawValue,
-                                    "source": "manual"])
+    @objc private func selectAutoMode() {
+        onResumeCalendarControl?()
+        uiLogger.logEvent("calendar.control.resume.requested", details: ["source": "mode_menu"])
     }
 
-    @objc private func resumeCalendarControl() {
-        onResumeCalendarControl?()
-        uiLogger.logEvent("calendar.control.resume.requested", details: ["source": "manual"])
+    @objc private func selectManualMode() {
+        let state = preferredManualOverrideState()
+        onManualOverride?(state)
+        uiLogger.logEvent("manual.mode.requested", details: [
+            "state": state.rawValue,
+            "source": "mode_menu"
+        ])
     }
 
     @objc private func turnOffSystem() {
@@ -452,6 +472,16 @@ public class StatusMenuController {
         ])
     }
 
+    @objc private func setManualOverride(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let state = PresenceState(rawValue: rawValue) else { return }
+        onManualOverride?(state)
+        uiLogger.logEvent("manual.override.requested", details: [
+            "state": state.rawValue,
+            "source": "manual_menu"
+        ])
+    }
+
     @objc private func simulateManualOverride(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
               let state = PresenceState(rawValue: rawValue) else { return }
@@ -470,18 +500,36 @@ public class StatusMenuController {
         uiLogger.logEvent("calendar.scan.manual", details: ["source": "debug_menu"])
     }
 
-    @objc private func configureDeviceAddress() {
+    @objc private func openSettings() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-
         let alert = NSAlert()
-        alert.messageText = "Configure Device Address"
-        alert.informativeText = "Enter the WLED device IPv4 address."
+        alert.messageText = "BusyLight Settings"
+        alert.informativeText = "Configure the WLED host and preset IDs used for each status."
         alert.alertStyle = .informational
 
-        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        inputField.stringValue = ConfigurationManager.shared.getDeviceNetworkAddresses().first ?? ""
-        alert.accessoryView = inputField
-        alert.window.initialFirstResponder = inputField
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+
+        let addressField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        addressField.stringValue = ConfigurationManager.shared.getDeviceNetworkAddresses().first ?? ""
+        stack.addArrangedSubview(labeledRow(label: "WLED Host (IPv4)", field: addressField))
+
+        let availableField = labeledNumericField(value: ConfigurationManager.shared.getWledPresetAvailable())
+        stack.addArrangedSubview(labeledRow(label: "Preset: Available", field: availableField))
+
+        let tentativeField = labeledNumericField(value: ConfigurationManager.shared.getWledPresetTentative())
+        stack.addArrangedSubview(labeledRow(label: "Preset: Tentative", field: tentativeField))
+
+        let busyField = labeledNumericField(value: ConfigurationManager.shared.getWledPresetBusy())
+        stack.addArrangedSubview(labeledRow(label: "Preset: Busy", field: busyField))
+
+        let awayField = labeledNumericField(value: ConfigurationManager.shared.getWledPresetAway())
+        stack.addArrangedSubview(labeledRow(label: "Preset: Away", field: awayField))
+
+        alert.accessoryView = stack
+        alert.window.initialFirstResponder = addressField
 
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
@@ -489,26 +537,33 @@ public class StatusMenuController {
         let response = alert.runModal()
         guard response == .alertFirstButtonReturn else { return }
 
-        let rawInput = inputField.stringValue
-        guard let normalized = NetworkAddressValidator.normalizeIPv4Address(rawInput) else {
-            showInvalidDeviceAddressAlert()
+        let rawInput = addressField.stringValue
+        if !rawInput.isEmpty {
+            guard let normalized = NetworkAddressValidator.normalizeIPv4Address(rawInput) else {
+                showInvalidDeviceAddressAlert()
+                return
+            }
+            onConfigureDeviceAddress?(normalized)
+        }
+
+        let presets = [availableField, tentativeField, busyField, awayField]
+        for field in presets where !isValidPresetInput(field.stringValue) {
+            showInvalidPresetAlert()
             return
         }
 
-        onConfigureDeviceAddress?(normalized)
-    }
-
-    private func showInvalidDeviceAddressAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Invalid Device Address"
-        alert.informativeText = "Please enter a valid IPv4 address (example: 192.168.1.42)."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    @objc private func openPreferences() {
-        uiLogger.logEvent("Preferences requested (not yet implemented)")
+        if let available = Int(availableField.stringValue) {
+            ConfigurationManager.shared.setWledPresetAvailable(available)
+        }
+        if let tentative = Int(tentativeField.stringValue) {
+            ConfigurationManager.shared.setWledPresetTentative(tentative)
+        }
+        if let busy = Int(busyField.stringValue) {
+            ConfigurationManager.shared.setWledPresetBusy(busy)
+        }
+        if let away = Int(awayField.stringValue) {
+            ConfigurationManager.shared.setWledPresetAway(away)
+        }
     }
 
 
@@ -536,6 +591,94 @@ public class StatusMenuController {
         lifecycleLogger.logEvent("Application shutting down via menu")
         NSApplication.shared.terminate(nil)
     }
-    
 
+    // MARK: - Menu Helpers
+
+    private func updateModeCheckmarks() {
+        autoModeItem?.state = currentMode == .auto ? .on : .off
+        manualModeItem?.state = currentMode == .manual ? .on : .off
+    }
+
+    private func updateTimeoutVisibility(for mode: OperatingMode) {
+        let shouldShow = mode == .manual
+        timeoutMenuItem?.isHidden = !shouldShow
+    }
+
+    private func preferredManualOverrideState() -> PresenceState {
+        switch currentDisplayState {
+        case .available, .busy, .tentative:
+            return currentDisplayState
+        default:
+            return .available
+        }
+    }
+
+    private func updateManualOverrideCheckmarks() {
+        for item in manualOverrideItems {
+            guard let rawValue = item.representedObject as? String else { continue }
+            item.state = rawValue == currentDisplayState.rawValue ? .on : .off
+        }
+    }
+
+    private func deviceStatusTitle(for status: DeviceStatus) -> String {
+        switch status.connectionState {
+        case .connected:
+            return "Device: Online"
+        case .disconnected:
+            return "Device: Offline"
+        case .error:
+            return "Device: Offline"
+        }
+    }
+
+    private func formatLastSync(from devices: [WLEDDevice]) -> String {
+        let lastSeen = devices.map { $0.lastSeen }.filter { $0 != Date.distantPast }.max()
+        guard let lastSeen else { return "Not yet" }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: lastSeen)
+    }
+
+    private func labeledNumericField(value: Int) -> NSTextField {
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = String(value)
+        return field
+    }
+
+    private func labeledRow(label: String, field: NSTextField) -> NSView {
+        let labelView = NSTextField(labelWithString: label)
+        labelView.font = NSFont.systemFont(ofSize: 12)
+        labelView.alignment = .right
+        labelView.frame = NSRect(x: 0, y: 0, width: 140, height: 24)
+
+        let row = NSStackView(views: [labelView, field])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 8
+        return row
+    }
+
+    private func isValidPresetInput(_ value: String) -> Bool {
+        guard let number = Int(value) else { return false }
+        return number >= 1 && number <= 250
+    }
+
+    private func showInvalidDeviceAddressAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Invalid Device Address"
+        alert.informativeText = "Please enter a valid IPv4 address (example: 192.168.1.42)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func showInvalidPresetAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Invalid Preset ID"
+        alert.informativeText = "Preset IDs must be numbers between 1 and 250."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
