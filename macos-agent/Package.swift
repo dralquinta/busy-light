@@ -21,11 +21,12 @@ let package = Package(
             dependencies: ["BusyLightCore"],
             path: "Sources/BusyLight",
             exclude: ["Resources"]   // Info.plist is for the Xcode .app bundle; SPM forbids it as a resource
+        ),
+        .testTarget(
+            name: "BusyLightCoreTests",
+            dependencies: ["BusyLightCore"],
+            path: "Tests/BusyLightCoreTests"
         )
-        // Note: Tests are in Tests/BusyLightTests/ and require a full Xcode
-        // installation to build (Swift Testing's cross-import overlay for
-        // Foundation is not available in Command Line Tools).
-        // Run them with: xcodebuild test -scheme BusyLight
     ]
 )
 

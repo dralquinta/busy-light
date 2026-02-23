@@ -32,10 +32,7 @@ public class ConfigurationManager {
         }
         
         configuration.deviceNetworkAddress = userDefaults.string(forKey: AppConfiguration.CodingKeys.deviceNetworkAddress.rawValue) ?? ""
-        configuration.deviceNetworkPort = userDefaults.integer(forKey: AppConfiguration.CodingKeys.deviceNetworkPort.rawValue)
-        if configuration.deviceNetworkPort == 0 {
-            configuration.deviceNetworkPort = 80  // WLED default port
-        }
+        configuration.deviceNetworkPort = 80  // WLED default port (fixed)
         
         // Load network addresses array
         if let addresses = userDefaults.array(forKey: AppConfiguration.CodingKeys.deviceNetworkAddresses.rawValue) as? [String] {
@@ -113,7 +110,8 @@ public class ConfigurationManager {
         
         configLogger.logEvent("Configuration loaded successfully",
                             details: ["presenceState": configuration.presenceState.rawValue,
-                                    "deviceAddress": configuration.deviceNetworkAddress.isEmpty ? "(not set)" : configuration.deviceNetworkAddress,
+                        "deviceAddress": configuration.deviceNetworkAddress.isEmpty ? "(not set)" : configuration.deviceNetworkAddress,
+                        "deviceAddresses": configuration.deviceNetworkAddresses.isEmpty ? "(none)" : configuration.deviceNetworkAddresses.joined(separator: ","),
                                     "hotkeyBindingsCount": String(configuration.hotkeyBindings.count)])
     }
     
@@ -151,7 +149,10 @@ public class ConfigurationManager {
         userDefaults.set(bindingsDict, forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue)
         
         userDefaults.synchronize()
-        configLogger.logEvent("Configuration saved", details: ["hotkeyBindingsCount": String(configuration.hotkeyBindings.count)])
+        configLogger.logEvent("Configuration saved", details: [
+            "hotkeyBindingsCount": String(configuration.hotkeyBindings.count),
+            "deviceAddresses": configuration.deviceNetworkAddresses.isEmpty ? "(none)" : configuration.deviceNetworkAddresses.joined(separator: ",")
+        ])
     }
     
     // MARK: - Configuration Access
@@ -170,16 +171,21 @@ public class ConfigurationManager {
     }
     
     public func setDeviceNetworkAddress(_ address: String) {
+        let previous = configuration.deviceNetworkAddress
         configuration.deviceNetworkAddress = address
         saveConfiguration()
+        configLogger.logEvent("device.address.updated", details: [
+            "previous": previous.isEmpty ? "(none)" : previous,
+            "new": address.isEmpty ? "(none)" : address
+        ])
     }
     
     public func getDeviceNetworkPort() -> Int {
-        return configuration.deviceNetworkPort
+        return 80
     }
     
     public func setDeviceNetworkPort(_ port: Int) {
-        configuration.deviceNetworkPort = port
+        configuration.deviceNetworkPort = 80
         saveConfiguration()
     }
     
@@ -188,8 +194,13 @@ public class ConfigurationManager {
     }
     
     public func setDeviceNetworkAddresses(_ addresses: [String]) {
+        let previous = configuration.deviceNetworkAddresses
         configuration.deviceNetworkAddresses = addresses
         saveConfiguration()
+        configLogger.logEvent("device.addresses.updated", details: [
+            "previous": previous.isEmpty ? "(none)" : previous.joined(separator: ","),
+            "new": addresses.isEmpty ? "(none)" : addresses.joined(separator: ",")
+        ])
     }
     
     // MARK: - WLED Configuration

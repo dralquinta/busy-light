@@ -100,6 +100,24 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             ])
         }
 
+        controller.onConfigureDeviceAddress = { [weak self, weak controller] address in
+            let previous = ConfigurationManager.shared.getDeviceNetworkAddresses().first ?? ""
+
+            ConfigurationManager.shared.setDeviceNetworkAddress(address)
+            ConfigurationManager.shared.setDeviceNetworkAddresses([address])
+
+            lifecycleLogger.logEvent("device.host.override.updated", details: [
+                "previous": previous.isEmpty ? "(none)" : previous,
+                "new": address
+            ])
+
+            controller?.updateConfiguredDevice(address: address, status: .unknown)
+
+            Task {
+                await self?.networkClient?.applyDeviceHostOverride(address)
+            }
+        }
+
         controller.setCalendarEngineStatus("Starting…")
         Task {
             await engine.start()
@@ -180,8 +198,11 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         networkClient = client
         
         // Wire network client callback to update UI with device statuses
-        client.onDeviceStatusChanged = { [weak controller] devices in
+        client.onDeviceStatusChanged = { [weak controller, weak self] devices in
             controller?.updateDeviceList(devices)
+            let configuredAddress = ConfigurationManager.shared.getDeviceNetworkAddresses().first
+            let status = self?.deviceConnectionStatus(for: configuredAddress, devices: devices) ?? .unknown
+            controller?.updateConfiguredDevice(address: configuredAddress, status: status)
         }
         
         // Connect to WLED devices and start health monitoring
@@ -222,6 +243,15 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     }
     
     // MARK: - Helpers
+
+    private func deviceConnectionStatus(
+        for address: String?,
+        devices: [WLEDDevice]
+    ) -> DeviceConnectionStatus {
+        guard let address = address, !address.isEmpty else { return .unknown }
+        guard let device = devices.first(where: { $0.address == address }) else { return .unknown }
+        return device.isOnline ? .online : .offline
+    }
     
     /// Converts a Carbon virtual key code to a human-readable function key name.
     private func functionKeyName(for keyCode: UInt16) -> String {

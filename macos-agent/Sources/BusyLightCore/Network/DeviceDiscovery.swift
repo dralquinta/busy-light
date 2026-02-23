@@ -143,9 +143,17 @@ public final class DeviceDiscovery: NSObject, @preconcurrency NetServiceBrowserD
             
             // Verify this is a WLED device by checking version string
             if info.ver.contains("0.") || info.ver.lowercased().contains("wled") {
+                let resolvedAddress: String
+                if let infoIp = info.ip,
+                   let normalizedIp = NetworkAddressValidator.normalizeIPv4Address(infoIp) {
+                    resolvedAddress = normalizedIp
+                } else {
+                    resolvedAddress = cleanHost
+                }
+
                 let device = WLEDDevice(
                     id: info.mac,
-                    address: cleanHost,
+                    address: resolvedAddress,
                     port: port,
                     name: info.name,
                     isOnline: true,
@@ -158,7 +166,7 @@ public final class DeviceDiscovery: NSObject, @preconcurrency NetServiceBrowserD
                     
                     networkLogger.logEvent("discovery.wled.verified", details: [
                         "name": info.name,
-                        "address": cleanHost,
+                        "address": resolvedAddress,
                         "port": String(port),
                         "version": info.ver,
                         "mac": info.mac
