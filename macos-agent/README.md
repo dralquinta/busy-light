@@ -46,6 +46,7 @@ The application will launch silently and display an icon in the macOS menu bar (
 2. **Click the icon** to open the dropdown menu
 3. **Toggle presence**: Click "Mark as Busy" or "Mark as Available"
 4. **View device status**: Menu shows current connection state to the busy-light device
+5. **Configure device address**: Open `Device` → `Configure Device Address...`
 5. **Quit**: Select "Quit BusyLight" from the menu
 
 ## Permissions
@@ -130,8 +131,9 @@ Settings are stored in `UserDefaults` under the suite `com.busylight.agent`. Con
 
 **Persistent Settings:**
 - `app.presence_state`: Current presence mode (available/busy/away/tentative/unknown)
-- `app.device_network_address`: Device host/IP for REST/WebSocket
-- `app.device_network_port`: Device communication port (default: 8080)
+- `app.device_network_addresses`: Configured WLED device addresses
+- `app.device_network_address`: Legacy device host/IP (kept in sync)
+- `app.device_network_port`: Device communication port (default: 80)
 - `app.launch_on_startup`: Enable login item (not yet implemented)
 - `app.show_menu_bar_text`: Display presence state in menu bar
 - `app.manual_override_timeout`: Manual override timeout in minutes (default: 120, -1 = none)

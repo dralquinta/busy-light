@@ -3,16 +3,18 @@ import Foundation
 /// HTTP adapter for WLED JSON API communication.
 /// Handles HTTP requests with timeout, retry logic, and structured logging.
 public actor HTTPAdapter {
-    private let session: URLSession
+    private var session: URLSession
     private let timeoutMilliseconds: Int
     private let maxRetries: Int = 3
     
     public init(timeoutMilliseconds: Int = 500) {
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = TimeInterval(timeoutMilliseconds) / 1000.0
-        config.timeoutIntervalForResource = TimeInterval(timeoutMilliseconds) / 1000.0
-        self.session = URLSession(configuration: config)
         self.timeoutMilliseconds = timeoutMilliseconds
+        self.session = HTTPAdapter.makeSession(timeoutMilliseconds: timeoutMilliseconds)
+    }
+
+    public func cancelAllRequests() {
+        session.invalidateAndCancel()
+        session = HTTPAdapter.makeSession(timeoutMilliseconds: timeoutMilliseconds)
     }
     
     // MARK: - Public API
@@ -192,5 +194,12 @@ public actor HTTPAdapter {
         }
         
         return url
+    }
+
+    private static func makeSession(timeoutMilliseconds: Int) -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = TimeInterval(timeoutMilliseconds) / 1000.0
+        config.timeoutIntervalForResource = TimeInterval(timeoutMilliseconds) / 1000.0
+        return URLSession(configuration: config)
     }
 }

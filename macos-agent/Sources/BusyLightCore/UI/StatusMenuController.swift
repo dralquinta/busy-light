@@ -11,6 +11,9 @@ public class StatusMenuController {
     private var resumeCalendarItem: NSMenuItem?
     private var turnOffMenuItem: NSMenuItem?
     private var deviceStatusItem: NSMenuItem?
+    private var deviceConnectedItem: NSMenuItem?
+    private var deviceConnectionStatusItem: NSMenuItem?
+    private var configureDeviceAddressItem: NSMenuItem?
     private var calendarStatusItem: NSMenuItem?
 
     /// The state currently shown in the menu bar icon and status text.
@@ -43,6 +46,9 @@ public class StatusMenuController {
 
     /// Called when the user wants to see hotkey debug information
     public var onShowHotkeyDebugInfo: (@MainActor () -> String)?
+
+    /// Called when the user configures a device address override.
+    public var onConfigureDeviceAddress: (@MainActor (String) -> Void)?
 
     /// Items in the Override Timeout submenu — kept for checkmark updates.
     private var timeoutMenuItems: [NSMenuItem] = []
@@ -105,6 +111,19 @@ public class StatusMenuController {
         // Device status
         deviceStatusItem = NSMenuItem(title: "Device: Disconnected", action: nil, keyEquivalent: "")
         menu.addItem(deviceStatusItem!)
+
+        // Device configuration (inline items)
+        deviceConnectedItem = NSMenuItem(title: "Connected to: Not configured", action: nil, keyEquivalent: "")
+        menu.addItem(deviceConnectedItem!)
+
+        deviceConnectionStatusItem = NSMenuItem(title: "Status: Unknown", action: nil, keyEquivalent: "")
+        menu.addItem(deviceConnectionStatusItem!)
+
+        configureDeviceAddressItem = NSMenuItem(title: "Configure Device Address…",
+                            action: #selector(configureDeviceAddress),
+                            keyEquivalent: "")
+        configureDeviceAddressItem?.target = self
+        menu.addItem(configureDeviceAddressItem!)
 
         // Calendar engine status
         calendarStatusItem = NSMenuItem(title: "Calendar: Starting…", action: nil, keyEquivalent: "")
@@ -349,10 +368,27 @@ public class StatusMenuController {
         ])
     }
 
+    public func updateConfiguredDevice(address: String?, status: DeviceConnectionStatus) {
+        if let address = address, !address.isEmpty {
+            deviceConnectedItem?.title = "Connected to: \(address)"
+        } else {
+            deviceConnectedItem?.title = "Connected to: Not configured"
+        }
+
+        deviceConnectionStatusItem?.title = "Status: \(status.displayText)"
+
+        uiLogger.logEvent("device.configured.status.updated", details: [
+            "address": address?.isEmpty == false ? address! : "(none)",
+            "status": status.rawValue
+        ])
+    }
+
     private func updateMenuAppearance() {
         let config = ConfigurationManager.shared
         let state = config.getPresenceState()
         updatePresenceState(state)
+
+        updateConfiguredDevice(address: config.getDeviceNetworkAddresses().first, status: .unknown)
 
         // Initialize device status as disconnected (will be updated later)
         let initialStatus = DeviceStatus(connectionState: .disconnected)
@@ -432,6 +468,43 @@ public class StatusMenuController {
         calendarStatusItem?.title = "Calendar: Scanning…"
         onScanNow?()
         uiLogger.logEvent("calendar.scan.manual", details: ["source": "debug_menu"])
+    }
+
+    @objc private func configureDeviceAddress() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Configure Device Address"
+        alert.informativeText = "Enter the WLED device IPv4 address."
+        alert.alertStyle = .informational
+
+        let inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        inputField.stringValue = ConfigurationManager.shared.getDeviceNetworkAddresses().first ?? ""
+        alert.accessoryView = inputField
+        alert.window.initialFirstResponder = inputField
+
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let rawInput = inputField.stringValue
+        guard let normalized = NetworkAddressValidator.normalizeIPv4Address(rawInput) else {
+            showInvalidDeviceAddressAlert()
+            return
+        }
+
+        onConfigureDeviceAddress?(normalized)
+    }
+
+    private func showInvalidDeviceAddressAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Invalid Device Address"
+        alert.informativeText = "Please enter a valid IPv4 address (example: 192.168.1.42)."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc private func openPreferences() {

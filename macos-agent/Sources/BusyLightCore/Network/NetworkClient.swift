@@ -44,6 +44,17 @@ public final class NetworkClient {
                 "count": String(discoveredDevices.count)
             ])
         }
+
+        // Auto-configure the first discovered device if no address is set
+        if config.getDeviceNetworkAddresses().isEmpty, let firstDevice = allDevices.first {
+            config.setDeviceNetworkAddress(firstDevice.address)
+            config.setDeviceNetworkAddresses([firstDevice.address])
+
+            networkLogger.logEvent("network_client.device_auto_configured", details: [
+                "address": firstDevice.address,
+                "port": String(firstDevice.port)
+            ])
+        }
         
         // Add manually configured devices
         let configuredAddresses = config.getDeviceNetworkAddresses()
@@ -86,6 +97,23 @@ public final class NetworkClient {
         networkLogger.logEvent("network_client.disconnect")
         stopHealthMonitoring()
         devices.removeAll()
+    }
+
+    /// Applies a manual device address override and reconnects immediately.
+    public func applyDeviceHostOverride(_ address: String) async {
+        let previous = config.getDeviceNetworkAddresses().joined(separator: ",")
+
+        networkLogger.logEvent("network_client.device_override.requested", details: [
+            "previous": previous.isEmpty ? "(none)" : previous,
+            "new": address
+        ])
+
+        stopHealthMonitoring()
+        await httpAdapter.cancelAllRequests()
+        devices.removeAll()
+
+        await connect()
+        startHealthMonitoring()
     }
     
     // MARK: - State Broadcasting
@@ -271,6 +299,11 @@ public final class NetworkClient {
     
     /// Checks health of a single device.
     private func checkDeviceHealth(device: WLEDDevice) async -> Bool {
+        networkLogger.logEvent("network_client.health.ping", details: [
+            "device": device.name ?? device.address,
+            "address": device.address,
+            "port": String(device.port)
+        ])
         do {
             _ = try await httpAdapter.getInfo(from: device.address, port: device.port)
             return true
