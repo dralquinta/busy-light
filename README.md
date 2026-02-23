@@ -92,29 +92,6 @@ Key WLED topics you will need to understand:
 
 ![Architecture Diagram](img/arch-diag.png)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      macOS Agent                             │
-│                                                              │
-│  Calendar Events  ──►  State Machine  ──►  HTTP JSON Client │
-│  Manual Hotkeys   ──►  (Priority:          │                │
-│  Stream Deck      ──►   System >           │                │
-│                         Manual >           ▼                │
-│                         Calendar)    WLED REST API          │
-└─────────────────────────────────────────────────────────────┘
-                                             │
-                                             ▼
-                                    ┌─────────────────┐
-                                    │  ESP32 + WLED   │
-                                    │  (Local Wi-Fi)  │
-                                    └─────────────────┘
-                                             │
-                                             ▼
-                                    ┌─────────────────┐
-                                    │   LED Matrix    │
-                                    │  (Physical UI)  │
-                                    └─────────────────┘
-```
 
 ---
 
