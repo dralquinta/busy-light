@@ -507,7 +507,6 @@ publish_github_release() {
     local version="$1"
     local dmg_path="$2"
     
-    check_command gh
     require_file "$dmg_path" "DMG file"
     
     # Verify gh authentication
@@ -772,8 +771,15 @@ create_dmg "$BUILD_APP" "$DIST_DIR/$DMG_NAME"
 if [[ "$SKIP_PUBLISH" == "true" ]]; then
     section "Step 5: GitHub Release (SKIPPED)"
     log "GitHub release skipped (dry-run mode)"
+    log "To publish, run: ./release.sh $VERSION"
 else
     section "Step 5: Publish to GitHub"
+    
+    # Check for gh command only when actually publishing
+    if ! command -v gh &>/dev/null; then
+        fail "GitHub CLI not found. Install with: brew install gh"
+    fi
+    
     publish_github_release "$VERSION" "$DIST_DIR/$DMG_NAME"
 fi
 
