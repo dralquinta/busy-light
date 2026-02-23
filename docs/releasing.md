@@ -29,11 +29,8 @@ git pull
 # 3. Run the release script (from project root)
 ./release.sh v1.0.0
 
-# 4. Verify the DMG
-open dist/BusyLight-1.0.0.dmg
-
-# 5. Publish (push the tag)
-git push origin v1.0.0
+# 4. Done! Verify on GitHub
+gh release view v1.0.0
 ```
 
 The script automates:
@@ -43,6 +40,7 @@ The script automates:
 - ✅ Developer ID signing (if configured)
 - ✅ Apple notarization (if configured)
 - ✅ GitHub Releases publication
+- ✅ Git tag push to origin
 
 ---
 
@@ -208,14 +206,7 @@ spctl --assess --verbose=2 BusyLight.app
 xcrun stapler validate BusyLight.app
 ```
 
-### 6. Publish the Tag
-
-```bash
-# Push tag to GitHub (triggers CI if configured)
-git push origin v1.0.0
-```
-
-### 7. Verify GitHub Release
+### 6. Verify GitHub Release
 
 1. Go to `https://github.com/OWNER/busy-light/releases`
 2. Verify the release is created
@@ -580,10 +571,7 @@ rm -rf dist/
 # 2. Run actual release (creates and publishes to GitHub)
 ./release.sh v1.0.0
 
-# 3. Push the tag
-git push origin v1.0.0
-
-# 4. Verify on GitHub
+# 3. Verify on GitHub (tag was automatically pushed)
 gh release view v1.0.0
 ```
 
@@ -859,9 +847,14 @@ Before publishing:
 - [ ] Signature verified (if applicable): `codesign --verify`
 - [ ] Notarization OK (if applicable): `spctl --assess`
 - [ ] Release notes are clear
-- [ ] Tag pushed to GitHub
 
-After publishing:
+After publishing (automated by script):
+
+- [ ] Release created on GitHub
+- [ ] Tag pushed to GitHub
+- [ ] DMG attached to release
+
+Manual verification:
 
 - [ ] Verify release on GitHub
 - [ ] Download DMG from GitHub

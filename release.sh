@@ -781,6 +781,14 @@ else
     fi
     
     publish_github_release "$VERSION" "$DIST_DIR/$DMG_NAME"
+    
+    # Push the tag to GitHub
+    log "Pushing tag to GitHub..."
+    if git push origin "$VERSION"; then
+        success "Tag $VERSION pushed to GitHub"
+    else
+        warn "Failed to push tag (may already exist on remote)"
+    fi
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -807,8 +815,8 @@ log "  2. Verificar que los permisos de calendario funcionan correctamente"
 log "  3. Actualizar notas de release si es necesario"
 
 if [[ "$SKIP_PUBLISH" == "false" ]]; then
-    log "  4. Hacer push del tag: git push origin $VERSION"
+    log "  4. ✅ Release publicado y tag pushed a GitHub"
 else
     log "  4. Publicar release: ./release.sh $VERSION"
-    log "  5. Hacer push del tag: git push origin $VERSION"
+    log "     (Esto automáticamente hará push del tag a GitHub)"
 fi
