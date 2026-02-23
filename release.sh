@@ -325,7 +325,6 @@ create_dmg() {
     
     local staging_dir
     staging_dir="$(mktemp -d)"
-    trap 'rm -rf "$staging_dir"' EXIT
     
     # Copy app to staging
     cp -R "$app_path" "$staging_dir/"
@@ -404,12 +403,12 @@ create_dmg() {
     sync
     sleep 1
     
-    # Unmount (with retries if busy)
+    # Unmount and detach (with retries if busy)
     log "Unmounting DMG..."
     local unmount_attempts=0
     while [[ $unmount_attempts -lt 5 ]]; do
-        # Try diskutil first, then hdiutil
-        if diskutil unmount "$mount_dir" &> /dev/null || hdiutil detach "$mount_dir" -force &> /dev/null; then
+        # MUST use hdiutil detach for disk images to fully release the device
+        if hdiutil detach "$mount_dir" -force &> /dev/null; then
             success "Unmounted DMG"
             break
         fi
@@ -426,19 +425,36 @@ create_dmg() {
             killall Finder 2>/dev/null || true
             sleep 3
             
-            if diskutil unmount force "$mount_dir" &>/dev/null; then
+            if hdiutil detach "$mount_dir" -force &>/dev/null; then
                 success "Unmounted DMG after restarting Finder"
                 break
             fi
             
-            fail "Failed to unmount DMG after all attempts. Manual cleanup required: diskutil unmount force $mount_dir"
+            fail "Failed to detach DMG after all attempts. Manual cleanup required: hdiutil detach $mount_dir -force"
+        fi
+    done
+    
+    # Verify disk device is fully detached
+    log "Verifying disk device is detached..."
+    local device_check_attempts=0
+    while [[ $device_check_attempts -lt 10 ]]; do
+        if ! hdiutil info | grep -q "$temp_dmg"; then
+            success "Disk device fully detached"
+            break
+        fi
+        device_check_attempts=$((device_check_attempts + 1))
+        if [[ $device_check_attempts -lt 10 ]]; then
+            log "Device still attached, waiting... ($device_check_attempts/10)"
+            sleep 1
+        else
+            warn "Device may still be attached, but proceeding anyway"
         fi
     done
     
     # Wait for system to fully release the DMG file
     log "Waiting for system to release DMG file..."
     sync
-    sleep 3
+    sleep 2
     
     # Verify temp DMG is accessible
     if [[ ! -f "$temp_dmg" ]]; then
@@ -475,6 +491,9 @@ create_dmg() {
     if [[ ! -f "$output_dmg" ]]; then
         fail "DMG file was not created: $output_dmg"
     fi
+    
+    # Clean up staging directory
+    rm -rf "$staging_dir"
     
     success "DMG created: $output_dmg"
     log "Size: $(du -h "$output_dmg" | cut -f1)"

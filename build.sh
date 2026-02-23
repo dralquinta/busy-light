@@ -54,12 +54,46 @@ do_bundle() {
     local binary="$AGENT_DIR/.build/$cfg/BusyLight"
     local bundle="$SCRIPT_DIR/BusyLight.app"
     local plist="$AGENT_DIR/Sources/BusyLight/Resources/Info.plist"
+    local icon_png="$SCRIPT_DIR/img/busy-light-icon.png"
 
     log "Assembling ${bundle}..."
     rm -rf "$bundle"
     mkdir -p "$bundle/Contents/MacOS"
+    mkdir -p "$bundle/Contents/Resources"
+    
     cp "$binary" "$bundle/Contents/MacOS/BusyLight"
     cp "$plist"   "$bundle/Contents/Info.plist"
+
+    # Convert PNG icon to ICNS and add to bundle
+    if [[ -f "$icon_png" ]]; then
+        log "Converting app icon to ICNS format..."
+        local temp_iconset="/tmp/BusyLight.iconset"
+        rm -rf "$temp_iconset"
+        mkdir -p "$temp_iconset"
+        
+        # Create required icon sizes for macOS
+        sips -z 16 16     "$icon_png" --out "$temp_iconset/icon_16x16.png" &>/dev/null
+        sips -z 32 32     "$icon_png" --out "$temp_iconset/icon_16x16@2x.png" &>/dev/null
+        sips -z 32 32     "$icon_png" --out "$temp_iconset/icon_32x32.png" &>/dev/null
+        sips -z 64 64     "$icon_png" --out "$temp_iconset/icon_32x32@2x.png" &>/dev/null
+        sips -z 128 128   "$icon_png" --out "$temp_iconset/icon_128x128.png" &>/dev/null
+        sips -z 256 256   "$icon_png" --out "$temp_iconset/icon_128x128@2x.png" &>/dev/null
+        sips -z 256 256   "$icon_png" --out "$temp_iconset/icon_256x256.png" &>/dev/null
+        sips -z 512 512   "$icon_png" --out "$temp_iconset/icon_256x256@2x.png" &>/dev/null
+        sips -z 512 512   "$icon_png" --out "$temp_iconset/icon_512x512.png" &>/dev/null
+        sips -z 1024 1024 "$icon_png" --out "$temp_iconset/icon_512x512@2x.png" &>/dev/null
+        
+        if command -v iconutil &>/dev/null; then
+            iconutil -c icns "$temp_iconset" -o "$bundle/Contents/Resources/AppIcon.icns" 2>/dev/null
+            log "App icon created: AppIcon.icns"
+        else
+            log "Warning: iconutil not found, app will not have an icon"
+        fi
+        
+        rm -rf "$temp_iconset"
+    else
+        log "Warning: Icon not found at $icon_png"
+    fi
 
     # Ad-hoc codesign so Gatekeeper and TCC accept the bundle.
     codesign --force --deep --sign - "$bundle" 2>/dev/null && \

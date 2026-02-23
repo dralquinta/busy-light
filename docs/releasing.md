@@ -188,6 +188,11 @@ open dist/BusyLight-1.0.0.dmg
 # Test installation
 cp -R /Volumes/BusyLight/BusyLight.app /Applications/
 open /Applications/BusyLight.app
+
+# Note: If the app icon doesn't appear immediately:
+# - macOS caches app icons; quit and reopen Finder
+# - Or refresh icon cache: killall Finder
+# - Or run: touch /Applications/BusyLight.app
 ```
 
 ### 5. Verify Signature (If Applicable)
@@ -455,20 +460,26 @@ rm -rf BusyLight.app dist/
 
 #### Issue: "hdiutil: convert failed - Resource temporarily unavailable"
 
-**Cause**: System hasn't fully released the temporary DMG file after unmounting
+**Cause**: The disk device wasn't fully detached after unmounting, keeping the temp DMG file locked
 
 **This issue has been fixed**: The script now:
-- Waits 3 seconds after unmounting before compression
+- Uses `hdiutil detach` (not `diskutil unmount`) to fully detach disk devices
+- Verifies the disk device is gone before compression (up to 10 seconds)
+- Waits 2 seconds after device detach before compression
 - Syncs filesystem buffers
-- Retries compression up to 3 times with delays
+- Retries compression up to 3 times with 2-second delays
 - Shows clear error messages
 
 **If you still encounter this:**
 ```bash
-# Clean up any temp DMG files
-rm -f /tmp/temp-*.dmg
+# Check if any disk devices are still attached
+hdiutil info | grep -i busylight
 
-# Clean dist and retry
+# If a device is shown, detach it
+hdiutil detach /dev/diskX -force
+
+# Clean up temp files and retry
+rm -f /tmp/temp-*.dmg
 rm -rf dist/
 ./release.sh v1.0.0 --skip-sign --dry-run
 ```
