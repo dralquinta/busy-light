@@ -125,7 +125,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             // overwrite the label if applyCalendarState already set it (e.g. a
             // busy event was found on first scan).
             if !engine.isActive {
-                controller.setCalendarEngineStatus("Permission denied")
+                controller.setCalendarEngineStatus("Permission required")
             } else if engine.currentState == .available {
                 controller.setCalendarEngineStatus("Active")
             }
@@ -144,6 +144,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             machine?.handleEvent(.systemReturned)
         }
 
+        #if DEBUG
         controller.onSimulateAway = { [weak monitor] in
             monitor?.simulateAway()
         }
@@ -155,6 +156,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         controller.onScanNow = { [weak engine] in
             Task { await engine?.scanNow() }
         }
+        #endif
 
         monitor.start()
         lifecycleLogger.logEvent("System presence monitor started")
@@ -212,11 +214,13 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             lifecycleLogger.logEvent("Network client initialized and connected")
         }
         
+        #if DEBUG
         // Wire debug info callback
         controller.onShowHotkeyDebugInfo = { [weak hotkeyMgr] in
             guard hotkeyMgr != nil else { return "HotkeyManager not available" }
             return "HotkeyManager active\nBindings: Ctrl+Cmd+1/2/3, Ctrl+Cmd+4 (resume), F16, F17"
         }
+        #endif
         
         // Initialize state machine
         machine.handleEvent(.startupInitialize)
