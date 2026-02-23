@@ -1,0 +1,179 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release macOS DMG
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+      
+      - name: Set up environment
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "VERSION_NUMBER=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      
+      - name: Install dependencies
+        run: |
+          # GitHub CLI is pre-installed on macos-latest runners
+          gh --version
+          
+          # Verify Swift and build tools
+          swift --version
+          xcodebuild -version
+      
+      - name: Import signing certificate
+        if: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 != '' }}
+        env:
+          SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}
+          SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create certificate file from base64
+          echo "$SIGNING_CERTIFICATE_P12_BASE64" | base64 --decode > certificate.p12
+          
+          # Create temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          
+          # Import certificate to keychain
+          security import certificate.p12 \
+            -k "$KEYCHAIN_PATH" \
+            -P "$SIGNING_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          
+          # Add keychain to search list
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | sed s/\"//g)
+          
+          # Verify certificate is available
+          security find-identity -p codesigning -v
+          
+          # Clean up certificate file
+          rm certificate.p12
+          
+          echo "✓ Signing certificate imported successfully"
+      
+      - name: Configure notarization
+        if: ${{ secrets.APPLE_ID != '' }}
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Store notarization credentials
+          xcrun notarytool store-credentials "CI_PROFILE" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID"
+          
+          echo "NOTARIZATION_PROFILE=CI_PROFILE" >> $GITHUB_ENV
+          echo "✓ Notarization configured"
+      
+      - name: Build and package release
+        env:
+          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY || 'Developer ID Application' }}
+          NOTARIZATION_PROFILE: ${{ env.NOTARIZATION_PROFILE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Determine signing flags
+          RELEASE_FLAGS=""
+          if [[ -z "${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}" ]]; then
+            echo "⚠️ No signing certificate configured - skipping signature"
+            RELEASE_FLAGS="--skip-sign"
+          fi
+          
+          # Make release script executable
+          chmod +x release.sh
+          
+          # Run release script (now in project root)
+          ./release.sh "${{ env.VERSION }}" $RELEASE_FLAGS
+      
+      - name: Verify DMG
+        run: |
+          DMG_PATH="dist/BusyLight-${{ env.VERSION_NUMBER }}.dmg"
+          
+          if [[ ! -f "$DMG_PATH" ]]; then
+            echo "❌ DMG not found: $DMG_PATH"
+            exit 1
+          fi
+          
+          echo "✓ DMG found: $DMG_PATH"
+          echo "Size: $(du -h "$DMG_PATH" | cut -f1)"
+          
+          # Verify DMG integrity
+          if hdiutil verify "$DMG_PATH"; then
+            echo "✓ DMG verification passed"
+          else
+            echo "❌ DMG verification failed"
+            exit 1
+          fi
+      
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BusyLight-${{ env.VERSION_NUMBER }}.dmg
+          path: dist/BusyLight-${{ env.VERSION_NUMBER }}.dmg
+          retention-days: 30
+      
+      - name: Verify release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Wait a moment for release to be fully created
+          sleep 5
+          
+          # Verify release exists
+          if gh release view "${{ env.VERSION }}"; then
+            echo "✓ Release verified: ${{ env.VERSION }}"
+            
+            # List assets
+            echo "Assets:"
+            gh release view "${{ env.VERSION }}" --json assets -q '.assets[].name'
+          else
+            echo "❌ Release not found"
+            exit 1
+          fi
+      
+      - name: Summary
+        run: |
+          echo "## 🎉 Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ env.VERSION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${GITHUB_SHA:0:7}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Artifact" >> $GITHUB_STEP_SUMMARY
+          echo "- \`BusyLight-${{ env.VERSION_NUMBER }}.dmg\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [Release Page](${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.VERSION }})" >> $GITHUB_STEP_SUMMARY
+          echo "- [Download DMG](${{ github.server_url }}/${{ github.repository }}/releases/download/${{ env.VERSION }}/BusyLight-${{ env.VERSION_NUMBER }}.dmg)" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Cleanup
+        if: always()
+        run: |
+          # Remove temporary keychain if it exists
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH" || true
+          fi
