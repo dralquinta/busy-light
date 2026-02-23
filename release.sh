@@ -346,6 +346,13 @@ create_dmg() {
     # Create DMG
     log "Creating DMG..."
     
+    # Clean up any previous mount
+    local mount_dir="/Volumes/$volume_name"
+    if [[ -d "$mount_dir" ]]; then
+        warn "Volume already mounted, cleaning up..."
+        diskutil unmount force "$mount_dir" &>/dev/null || hdiutil detach "$mount_dir" -force &>/dev/null || true
+    fi
+    
     if [[ -f "$output_dmg" ]]; then
         rm -f "$output_dmg"
         log "Removed existing DMG"
@@ -365,7 +372,6 @@ create_dmg() {
     
     # Mount and customize
     log "Customizing DMG layout..."
-    local mount_dir="/Volumes/$volume_name"
     
     hdiutil attach "$temp_dmg" -mountpoint "$mount_dir" -nobrowse &> /dev/null
     
@@ -390,7 +396,7 @@ create_dmg() {
         fi
     fi
     
-    # Set window properties
+    # Set window properties (simplified to avoid Finder hanging)
     osascript <<EOF &>/dev/null || warn "Could not set custom DMG layout"
 tell application "Finder"
     tell disk "$volume_name"
@@ -402,31 +408,57 @@ tell application "Finder"
         set viewOptions to the icon view options of container window
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 96
-        set background picture of viewOptions to file ".VolumeIcon.icns" of disk "$volume_name"
         set position of item "$app_name" of container window to {125, 180}
         set position of item "Applications" of container window to {375, 180}
         close
-        open
         update without registering applications
-        delay 2
     end tell
 end tell
 EOF
+    
+    # Sync to ensure all writes complete
+    sync
+    sleep 1
+    
+    # Try to eject via Finder first (cleaner than forced detach)
+    osascript <<EOF &>/dev/null || true
+tell application "Finder"
+    if disk "$volume_name" exists then
+        eject disk "$volume_name"
+    end if
+end tell
+EOF
+    
+    sleep 1
     
     # Unmount (with retries if busy)
     log "Unmounting DMG..."
     local unmount_attempts=0
     while [[ $unmount_attempts -lt 5 ]]; do
-        if hdiutil detach "$mount_dir" -force &> /dev/null; then
+        # Try diskutil first, then hdiutil
+        if diskutil unmount "$mount_dir" &> /dev/null || hdiutil detach "$mount_dir" -force &> /dev/null; then
             success "Unmounted DMG"
             break
         fi
         unmount_attempts=$((unmount_attempts + 1))
         if [[ $unmount_attempts -lt 5 ]]; then
             warn "Unmount attempt $unmount_attempts failed, retrying..."
+            # Try to kill any processes holding the mount
+            lsof "$mount_dir" 2>/dev/null | grep -v "COMMAND" | awk '{print $2}' | xargs kill -9 2>/dev/null || true
             sleep 2
         else
-            fail "Failed to unmount DMG after 5 attempts. Close any Finder windows and try again."
+            # Last resort: restart Finder and try one more time
+            warn "Trying last resort: restarting Finder..."
+            lsof "$mount_dir" 2>/dev/null || true
+            killall Finder 2>/dev/null || true
+            sleep 3
+            
+            if diskutil unmount force "$mount_dir" &>/dev/null; then
+                success "Unmounted DMG after restarting Finder"
+                break
+            fi
+            
+            fail "Failed to unmount DMG after all attempts. Manual cleanup required: diskutil unmount force $mount_dir"
         fi
     done
     
