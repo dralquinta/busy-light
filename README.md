@@ -4,7 +4,7 @@
 [![macOS](https://img.shields.io/badge/macOS-Monterey%2012%2B-blue?logo=apple)](https://www.apple.com/macos/)
 [![ESP32](https://img.shields.io/badge/hardware-ESP32-red?logo=espressif)](https://www.espressif.com/en/products/socs/esp32)
 [![WLED](https://img.shields.io/badge/firmware-WLED-orange)](https://github.com/wled/WLED)
-[![License](https://img.shields.io/github/license/dralquinta/busy-light)](LICENSE)
+[![License](https://img.shields.io/badge/license-Source%20Available%20%7C%20Non--Commercial-blue)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/dralquinta/busy-light?include_prereleases)](https://github.com/dralquinta/busy-light/releases)
 [![Last Commit](https://img.shields.io/github/last-commit/dralquinta/busy-light)](https://github.com/dralquinta/busy-light/commits)
 [![Status](https://img.shields.io/badge/status-active%20development-brightgreen)](https://github.com/dralquinta/busy-light)
@@ -224,6 +224,36 @@ Visit the full documentation site (coming soon via GitHub Pages).
 ## Contributing
 
 See individual module READMEs for contribution guidelines.
+
+---
+
+## License
+
+BusyLight is source-available software released under a **non-commercial license**.
+
+### What You Can Do
+
+✅ Use BusyLight for personal, educational, or non-commercial purposes  
+✅ View, study, and modify the source code  
+✅ Contribute improvements back to the project  
+✅ Build your own hardware device for personal use  
+
+### What Requires Permission
+
+❌ Commercial use (selling hardware devices, offering as a paid service, etc.)  
+❌ Using BusyLight in for-profit businesses without a commercial license  
+❌ Removing or modifying license/copyright notices  
+
+### Commercial Licensing
+
+If you're interested in:
+- Selling pre-built BusyLight hardware devices
+- Using BusyLight in a commercial product or service
+- Enterprise deployment
+
+Please contact the copyright holder to discuss commercial licensing options.
+
+For full license terms, see the [LICENSE](LICENSE) file.
 
 ---
 
