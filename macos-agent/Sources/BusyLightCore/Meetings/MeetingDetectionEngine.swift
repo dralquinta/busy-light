@@ -29,6 +29,7 @@ public final class MeetingDetectionEngine {
     private var detectors: [any MeetingDetectorProtocol]
     private var pollingTask: Task<Void, Never>?
     private var lastReportedStatus: MeetingStatus = .none
+    private var suppressUntil: Date?
     private let logger: Logger
 
     // MARK: - Init
@@ -83,10 +84,35 @@ public final class MeetingDetectionEngine {
             "enabled": String(enabled),
         ])
     }
+    
+    /// Clears the current meeting status and suppresses detection for a brief period.
+    /// This is useful when resuming calendar control - it prevents stale meeting
+    /// detections (like a lingering Google Meet tab) from overriding calendar state.
+    public func clearAndSuppressFor(seconds: Double) {
+        suppressUntil = Date().addingTimeInterval(seconds)
+        lastReportedStatus = .none
+        logger.logEvent("meeting.detection.suppressed", details: [
+            "duration_seconds": String(seconds)
+        ])
+        // Notify immediately that we're clearing the meeting status
+        onMeetingStatusChanged?(.none)
+    }
 
     // MARK: - Detection Poll
 
     private func poll() {
+        // Check if we're in suppression period
+        if let suppressUntil = suppressUntil {
+            if Date() < suppressUntil {
+                // Still suppressed, skip this poll
+                return
+            } else {
+                // Suppression period ended
+                self.suppressUntil = nil
+                logger.logEvent("meeting.detection.suppression_ended")
+            }
+        }
+        
         var bestResult: MeetingDetectionResult?
 
         for detector in detectors where detector.isEnabled {

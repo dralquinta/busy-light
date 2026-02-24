@@ -109,6 +109,11 @@ public class ConfigurationManager {
             configuration.meetingPollIntervalSeconds = rawInterval
         }
         
+        // Load calendar filtering settings
+        if let enabledCalendars = userDefaults.array(forKey: AppConfiguration.CodingKeys.enabledCalendarTitles.rawValue) as? [String] {
+            configuration.enabledCalendarTitles = enabledCalendars
+        }
+        
         // Load hotkey bindings
         if let savedBindings = userDefaults.dictionary(forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue) as? [String: NSNumber] {
             var bindings: [String: UInt16] = [:]
@@ -177,6 +182,9 @@ public class ConfigurationManager {
         userDefaults.set(configuration.meetingProviderBrowserEnabled, forKey: AppConfiguration.CodingKeys.meetingProviderBrowserEnabled.rawValue)
         userDefaults.set(configuration.meetingConfidenceThreshold, forKey: AppConfiguration.CodingKeys.meetingConfidenceThreshold.rawValue)
         userDefaults.set(configuration.meetingPollIntervalSeconds, forKey: AppConfiguration.CodingKeys.meetingPollIntervalSeconds.rawValue)
+        
+        // Save calendar filtering settings
+        userDefaults.set(configuration.enabledCalendarTitles, forKey: AppConfiguration.CodingKeys.enabledCalendarTitles.rawValue)
         
         userDefaults.synchronize()
         configLogger.logEvent("Configuration saved", details: [
@@ -470,5 +478,14 @@ public class ConfigurationManager {
     public func setMeetingPollIntervalSeconds(_ seconds: Double) {
         configuration.meetingPollIntervalSeconds = max(1.0, seconds)
         saveConfiguration()
+    }    
+    // MARK: - Calendar Filtering
+    
+    public func getEnabledCalendarTitles() -> [String] {
+        return configuration.enabledCalendarTitles
     }
-}
+    
+    public func setEnabledCalendarTitles(_ titles: [String]) {
+        configuration.enabledCalendarTitles = titles
+        saveConfiguration()
+    }}

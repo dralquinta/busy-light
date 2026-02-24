@@ -41,8 +41,8 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         lifecycleLogger.logEvent("State machine initialized")
         
         // Wire state machine callbacks to UI
-        machine.onStateChanged = { [weak controller, weak self] state, source in
-            controller?.updatePresenceState(state)
+        machine.onStateChanged = { [weak controller, weak self, weak machine] state, source, reason in
+            controller?.updatePresenceState(state, source: source, reason: reason, mode: machine?.currentMode ?? .auto)
 
             // Update calendar status label when calendar or startup drives state.
             // Skip .off — that label is already set by updateModeDisplay(.off).
@@ -79,8 +79,10 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             Task { await engine?.scanNow() }
         }
 
-        controller.onResumeCalendarControl = { [weak machine] in
+        controller.onResumeCalendarControl = { [weak machine, weak self] in
             machine?.handleEvent(.resumeAuto)
+            // Clear any stale meeting detections when manually resuming calendar control
+            self?.meetingEngine?.clearAndSuppressFor(seconds: 5)
         }
         
         controller.onManualOverride = { [weak machine] state in
@@ -117,6 +119,16 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             Task {
                 await self?.networkClient?.applyDeviceHostOverride(address)
             }
+        }
+        
+        controller.onGetCalendarList = { [weak engine] in
+            let available = engine?.getAvailableCalendars() ?? []
+            let enabled = ConfigurationManager.shared.getEnabledCalendarTitles()
+            return (available, enabled)
+        }
+        
+        controller.onUpdateEnabledCalendars = { [weak engine] titles in
+            await engine?.setEnabledCalendars(titles)
         }
 
         controller.setCalendarEngineStatus("Starting…")
@@ -178,9 +190,13 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             machine?.handleEvent(.hotkeyPressed(state))
         }
         
-        hotkeyMgr.onResumeCalendarControl = { [weak machine, weak engine] in
+        hotkeyMgr.onResumeCalendarControl = { [weak machine, weak engine, weak self] in
             // Cancel override and resume calendar control immediately
             machine?.handleEvent(.resumeAuto)
+            
+            // Clear any stale meeting detections and suppress for 5 seconds
+            // This prevents lingering Google Meet tabs from overriding calendar state
+            self?.meetingEngine?.clearAndSuppressFor(seconds: 5)
             
             // Trigger immediate calendar scan to update status
             Task {

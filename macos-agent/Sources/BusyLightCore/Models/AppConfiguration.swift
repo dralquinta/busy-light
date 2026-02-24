@@ -68,7 +68,16 @@ public struct AppConfiguration: Codable, Sendable {
     /// How often the meeting detectors are polled, in seconds (default: 3)
     public var meetingPollIntervalSeconds: Double = 3.0
     
+    // MARK: - Calendar Filtering Configuration
+    
+    /// List of calendar titles enabled for presence detection
+    /// Empty array means all calendars are included (default behavior)
+    public var enabledCalendarTitles: [String] = []
+    
     public init() {}
+    
+    /// Default configuration with all default values
+    public static let defaultConfiguration = AppConfiguration()
     
     public enum CodingKeys: String, CodingKey {
         case presenceState = "app.presence_state"
@@ -95,5 +104,6 @@ public struct AppConfiguration: Codable, Sendable {
         case meetingProviderBrowserEnabled = "app.meeting_provider_browser_enabled"
         case meetingConfidenceThreshold = "app.meeting_confidence_threshold"
         case meetingPollIntervalSeconds = "app.meeting_poll_interval_seconds"
+        case enabledCalendarTitles = "app.enabled_calendar_titles"
     }
 }

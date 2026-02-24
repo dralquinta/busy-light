@@ -41,7 +41,8 @@ public final class PresenceStateMachine {
     // MARK: - Callbacks
     
     /// Notifies when presence state changes. Called after successful transition.
-    public var onStateChanged: (@MainActor (PresenceState, StateSource) -> Void)?
+    /// Parameters: state, source, busyReason
+    public var onStateChanged: (@MainActor (PresenceState, StateSource, BusyReason) -> Void)?
     
     /// Notifies when operating mode changes (auto ↔ manual).
     public var onModeChanged: (@MainActor (OperatingMode) -> Void)?
@@ -451,7 +452,7 @@ public final class PresenceStateMachine {
         ])
         
         // Notify observers
-        onStateChanged?(newState, source)
+        onStateChanged?(newState, source, currentBusyReason)
     }
 
     private func deriveBusyReason(

@@ -1,3 +1,4 @@
+import Foundation
 import AppKit
 import ApplicationServices
 
@@ -22,6 +23,7 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
 
     public let provider: MeetingProvider
     public var isEnabled: Bool
+    private let logger: Logger = meetingLogger
 
     // MARK: - Browser Process Names
 
@@ -37,10 +39,9 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
     // MARK: - Per-Provider Title Patterns
 
     private static let meetTitlePatterns: [String] = [
-        "meet – ",          // "Meet – John Doe - Google Meet" (en dash variant)
-        "meet - ",          // "Meet - John Doe - Google Meet" (ASCII hyphen variant)
-        "google meet",
-        "meet.google.com",
+        "meet:",            // "Meet: abc-def-ghi" - Active meeting with code (most reliable)
+        // Note: Removed "meet – " and "meet - " as they match landing page "Meet - Google Meet"
+        // Note: Removed "google meet" and "meet.google.com" - too broad, match landing page
     ]
 
     private static let teamsTitlePatterns: [String] = [
@@ -68,11 +69,17 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
 
     public func detect() -> MeetingDetectionResult {
         guard isEnabled else {
+            logger.logEvent("meeting.browser.detector_disabled", details: [
+                "provider": provider.rawValue,
+            ])
             return MeetingDetectionResult(provider: provider, status: .none)
         }
 
         guard AXIsProcessTrusted() else {
             // Cannot inspect window titles without Accessibility permission.
+            logger.logEvent("meeting.browser.no_accessibility", details: [
+                "provider": provider.rawValue,
+            ])
             return MeetingDetectionResult(provider: provider, status: .none)
         }
 
@@ -83,7 +90,60 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
                   Self.browserProcessNames.contains(name) else { continue }
 
             let titles = MeetingProcessInspector.windowTitles(for: app)
+            
+            // Log all window titles for debugging
+            if !titles.isEmpty {
+                logger.logEvent("meeting.browser.window_titles", details: [
+                    "browser": name,
+                    "provider": provider.rawValue,
+                    "title_count": String(titles.count),
+                    "patterns": patterns.joined(separator: " | "),
+                ])
+                // Debug: log each title individually
+                for (idx, title) in titles.enumerated() {
+                    logger.logEvent("meeting.browser.window_title", details: [
+                        "browser": name,
+                        "provider": provider.rawValue,
+                        "index": String(idx),
+                        "title": title,
+                    ])
+                }
+            }
+            
+            // For Google Meet, require additional active meeting indicators
+            // to prevent false positives from tabs left open after meeting ends
+            if provider == .meet && MeetingProcessInspector.anyTitle(titles, containsAny: patterns) {
+                let hasMeetTitle = titles.contains { title in
+                    let lower = title.lowercased()
+                    return lower.contains("meet:")
+                }
+                
+                if hasMeetTitle {
+                    // Check for active meeting indicators (camera/mic usage, recording, etc.)
+                    let hasActiveIndicator = titles.contains { title in
+                        let lower = title.lowercased()
+                        return lower.contains("camera") || 
+                               lower.contains("microphone") ||
+                               lower.contains("recording") ||
+                               lower.contains("screen shar")  // "screen sharing"
+                    }
+                    
+                    if !hasActiveIndicator {
+                        logger.logEvent("meeting.browser.meet_tab_inactive", details: [
+                            "browser": name,
+                            "reason": "no active indicators (camera/microphone/recording)",
+                        ])
+                        continue  // Skip this browser, check next one
+                    }
+                }
+            }
+            
             if MeetingProcessInspector.anyTitle(titles, containsAny: patterns) {
+                logger.logEvent("meeting.browser.match_found", details: [
+                    "browser": name,
+                    "provider": provider.rawValue,
+                    "matched": "true",
+                ])
                 return MeetingDetectionResult(
                     provider: provider,
                     status: .inMeeting(
@@ -92,6 +152,12 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
                         signal: .windowTitle
                     )
                 )
+            } else {
+                // No match - log for debugging
+                logger.logEvent("meeting.browser.no_match", details: [
+                    "browser": name,
+                    "provider": provider.rawValue,
+                ])
             }
         }
 

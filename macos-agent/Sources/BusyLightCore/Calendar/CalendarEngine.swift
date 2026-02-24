@@ -54,9 +54,12 @@ public final class CalendarEngine {
     /// dependency-injecting init in tests.
     public convenience init() {
         let store = EKEventStore()
+        let scanner = CalendarScanner(store: store)
+        // Load enabled calendars from configuration
+        scanner.enabledCalendarTitles = ConfigurationManager.shared.getEnabledCalendarTitles()
         self.init(
             permissionManager: CalendarPermissionManager(store: store),
-            scanner: CalendarScanner(store: store),
+            scanner: scanner,
             resolver: CalendarAvailabilityResolver(),
             logger: calendarLogger
         )
@@ -127,6 +130,22 @@ public final class CalendarEngine {
         currentState = .away   // force applyState's guard to pass on any resolved state
         scanner.resetStore()
         await performScan()
+    }
+    
+    /// Returns all available calendars as (title, source) pairs for UI display
+    public func getAvailableCalendars() -> [(title: String, source: String)] {
+        return scanner.getAvailableCalendars()
+    }
+    
+    /// Updates the list of enabled calendar titles and triggers an immediate rescan
+    public func setEnabledCalendars(_ titles: [String]) async {
+        scanner.enabledCalendarTitles = titles
+        ConfigurationManager.shared.setEnabledCalendarTitles(titles)
+        logger.logEvent("calendar.filter.updated", details: [
+            "enabled_count": String(titles.count),
+            "titles": titles.joined(separator: ", ")
+        ])
+        await scanNow()
     }
 
     // MARK: - Scanning
