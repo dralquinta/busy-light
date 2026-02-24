@@ -5,8 +5,8 @@
 [![ESP32](https://img.shields.io/badge/hardware-ESP32-red?logo=espressif)](https://www.espressif.com/en/products/socs/esp32)
 [![WLED](https://img.shields.io/badge/firmware-WLED-orange)](https://github.com/wled/WLED)
 [![License](https://img.shields.io/badge/license-Source%20Available%20%7C%20Non--Commercial-blue)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/dralquinta/busy-light?include_prereleases)](https://github.com/dralquinta/busy-light/releases)
-[![Last Commit](https://img.shields.io/github/last-commit/dralquinta/busy-light)](https://github.com/dralquinta/busy-light/commits)
+[![Release](https://img.shields.io/badge/release-v1.0.1-blue)](https://github.com/dralquinta/busy-light/releases)
+[![Latest Tag](https://img.shields.io/badge/tag-v1.0.1-blue)](https://github.com/dralquinta/busy-light/tags)
 [![Status](https://img.shields.io/badge/status-active%20development-brightgreen)](https://github.com/dralquinta/busy-light)
 
 ---
@@ -267,4 +267,4 @@ Maintaining open-source hardware and software projects takes time, iteration, an
 
 ---
 
-**Version**: 0.1.0 | **Status**: Active Development
+**Version**: v1.0.1 | **Status**: Active Development
