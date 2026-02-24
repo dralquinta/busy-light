@@ -37,7 +37,8 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
     // MARK: - Per-Provider Title Patterns
 
     private static let meetTitlePatterns: [String] = [
-        "meet – ",          // "Meet – John Doe - Google Meet"
+        "meet – ",          // "Meet – John Doe - Google Meet" (en dash variant)
+        "meet - ",          // "Meet - John Doe - Google Meet" (ASCII hyphen variant)
         "google meet",
         "meet.google.com",
     ]
@@ -51,7 +52,8 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
 
     private static let zoomTitlePatterns: [String] = [
         "zoom meeting",
-        "zoom – ",
+        "zoom – ",          // en dash variant
+        "zoom - ",          // ASCII hyphen variant
         "zoom.us",
     ]
 

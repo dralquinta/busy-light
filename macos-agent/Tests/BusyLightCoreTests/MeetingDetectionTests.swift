@@ -59,6 +59,8 @@ final class MeetingStatusTests: XCTestCase {
 // MARK: - Mock Detector
 
 /// A simple mock detector that returns a predetermined result.
+/// `@unchecked Sendable` is safe here because all accesses occur on the
+/// `@MainActor` test thread; there is no concurrent mutation.
 final class MockMeetingDetector: MeetingDetectorProtocol, @unchecked Sendable {
     let provider: MeetingProvider
     var isEnabled: Bool = true
