@@ -227,8 +227,10 @@ public final class PresenceStateMachine {
                 uiLogger.logEvent("meeting.ended", details: [
                     "previousProvider": currentBusyReason.rawValue
                 ])
-                // Reset source so calendar can take over again.
-                currentSource = .startup
+                // Immediately transition to available to clear the busy state,
+                // then request a calendar sync to get the accurate state.
+                // This prevents the user from staying busy while waiting for the scan.
+                applyStateTransition(to: .available, source: .startup, forceUpdate: true)
                 onRequestCalendarSync?()
             }
         }
