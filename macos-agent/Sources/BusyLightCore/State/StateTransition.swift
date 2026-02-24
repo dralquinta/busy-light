@@ -15,7 +15,7 @@ public struct StateTransition: Sendable {
         
         // In off mode, ignore everything except manual/startup sources (which re-enable the system)
         if mode == .off {
-            if newSource == .calendar || newSource == .system {
+            if newSource == .calendar || newSource == .system || newSource == .meeting {
                 return (false, "system-is-off")
             }
         }
@@ -24,10 +24,10 @@ public struct StateTransition: Sendable {
         if newSource == .system {
             return (true, nil)
         }
-        
+
         // In manual mode, only manual or system sources can change state
         if mode == .manual {
-            if newSource == .calendar {
+            if newSource == .calendar || newSource == .meeting {
                 return (false, "manual-override-active")
             }
         }
@@ -51,6 +51,8 @@ public struct StateTransition: Sendable {
         switch event {
         case .calendarUpdated:
             return .calendar
+        case .meetingDetected:
+            return .meeting
         case .manualOverride:
             return .manual
         case .hotkeyPressed:
@@ -65,7 +67,7 @@ public struct StateTransition: Sendable {
             return .startup
         }
     }
-    
+
     /// Determines the target state for a given event
     public static func targetStateForEvent(
         _ event: StateEvent,
@@ -75,6 +77,8 @@ public struct StateTransition: Sendable {
         switch event {
         case .calendarUpdated(let state):
             return state
+        case .meetingDetected(let meetingStatus):
+            return meetingStatus.isInMeeting ? .busy : nil
         case .manualOverride(let state):
             return state
         case .hotkeyPressed(let state):

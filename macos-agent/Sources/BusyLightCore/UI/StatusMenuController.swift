@@ -54,6 +54,13 @@ public class StatusMenuController {
 
     /// Called when the user configures a device address override.
     public var onConfigureDeviceAddress: (@MainActor (String) -> Void)?
+    
+    /// Called when the user wants to select which calendars to monitor.
+    /// Returns (availableCalendars, currentlyEnabledTitles)
+    public var onGetCalendarList: (@MainActor () -> (available: [(title: String, source: String)], enabled: [String]))?
+    
+    /// Called when the user updates the list of enabled calendars.
+    public var onUpdateEnabledCalendars: (@MainActor ([String]) async -> Void)?
 
     /// Items in the Override Timeout submenu — kept for checkmark updates.
     private var timeoutMenuItems: [NSMenuItem] = []
@@ -133,6 +140,17 @@ public class StatusMenuController {
                                      keyEquivalent: "")
         turnOffMenuItem?.target = self
         menu.addItem(turnOffMenuItem!)
+        
+        // Resume Calendar Control - useful when browser meeting tab is still open but meeting has ended
+        let resumeCalendarItem = NSMenuItem(title: "Resume Calendar Control",
+                                           action: #selector(resumeCalendar),
+                                           keyEquivalent: "")
+        resumeCalendarItem.target = self
+        resumeCalendarItem.keyEquivalentModifierMask = [.command, .control]
+        resumeCalendarItem.keyEquivalent = "4"
+        menu.addItem(resumeCalendarItem)
+        
+        menu.addItem(NSMenuItem.separator())
         
         // Device status
         deviceStatusItem = NSMenuItem(title: "Device: Offline", action: nil, keyEquivalent: "")
@@ -237,6 +255,12 @@ public class StatusMenuController {
         #endif
 
         menu.addItem(NSMenuItem.separator())
+        
+        // Calendar selection
+        let selectCalendarsItem = NSMenuItem(title: "Select Calendars…", action: #selector(selectCalendars), keyEquivalent: "")
+        selectCalendarsItem.target = self
+        menu.addItem(selectCalendarsItem)
+        
         settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem?.target = self
         menu.addItem(settingsItem!)
@@ -260,15 +284,58 @@ public class StatusMenuController {
         }
     }
     
-    public func updatePresenceState(_ state: PresenceState) {
+    public func updatePresenceState(_ state: PresenceState, source: StateSource = .startup, reason: BusyReason = .unknown, mode: OperatingMode = .auto) {
         currentDisplayState = state
-        statusText?.title = "Status: \(state.displayName)"
+        
+        // Build detailed status string
+        var statusDetail = ""
+        switch mode {
+        case .auto:
+            switch source {
+            case .calendar:
+                statusDetail = " (Calendar)"
+            case .meeting:
+                switch reason {
+                case .zoom:
+                    statusDetail = " (Zoom Meeting)"
+                case .teams:
+                    statusDetail = " (Teams Meeting)"
+                case .meet:
+                    statusDetail = " (Google Meet)"
+                default:
+                    statusDetail = " (Meeting)"
+                }
+            case .system:
+                statusDetail = " (System)"
+            case .startup:
+                statusDetail = " (Automatic)"
+            case .manual:
+                statusDetail = " (Manual)"
+            }
+        case .manual:
+            statusDetail = " (Manual Override)"
+        case .off:
+            statusDetail = " (Disabled)"
+        }
+        
+        statusText?.title = "Status: \(state.displayName)\(statusDetail)"
 
         // Update button icon color based on state
         updateButtonAppearance(for: state)
         updateManualOverrideCheckmarks()
 
-        uiLogger.logEvent("Presence state updated", details: ["state": state.rawValue])
+        uiLogger.logEvent("Presence state updated", details: [
+            "state": state.rawValue,
+            "source": source.rawValue,
+            "reason": reason.rawValue,
+            "mode": mode.rawValue
+        ])
+    }
+    
+    // Legacy method for compatibility
+    @available(*, deprecated, message: "Use updatePresenceState(_:source:reason:mode:) instead")
+    public func updatePresenceState(_ state: PresenceState) {
+        updatePresenceState(state, source: .startup, reason: .unknown, mode: currentMode)
     }
     
     /// Called by the state machine when operating mode changes
@@ -301,7 +368,7 @@ public class StatusMenuController {
     /// DEPRECATED: State machine now handles this via .systemAway event
     public func applyAwayState() {
         calendarStatusItem?.title = "Calendar: Paused (screen locked)"
-        updatePresenceState(.away)
+        updatePresenceState(.away, source: .system, reason: .unknown, mode: currentMode)
         updateButtonAppearance(for: .away)
         uiLogger.logEvent("system.presence.away.applied")
     }
@@ -326,7 +393,7 @@ public class StatusMenuController {
         } else {
             calendarStatusItem?.title = "Calendar: \(state.displayName) ●"
         }
-        updatePresenceState(state)
+        updatePresenceState(state, source: .calendar, reason: .calendar, mode: currentMode)
         updateModeCheckmarks()
     }
 
@@ -405,7 +472,7 @@ public class StatusMenuController {
     private func updateMenuAppearance() {
         let config = ConfigurationManager.shared
         let state = config.getPresenceState()
-        updatePresenceState(state)
+        updatePresenceState(state, source: .startup, reason: .unknown, mode: currentMode)
 
         updateConfiguredDevice(address: config.getDeviceNetworkAddresses().first, status: .unknown)
 
@@ -452,6 +519,11 @@ public class StatusMenuController {
     @objc private func turnOffSystem() {
         onTurnOff?()
         uiLogger.logEvent("system.off.requested", details: ["source": "menu"])
+    }
+    
+    @objc private func resumeCalendar() {
+        onResumeCalendarControl?()
+        uiLogger.logEvent("resume.calendar.requested", details: ["source": "menu"])
     }
 
     @objc private func simulateAway() {
@@ -584,6 +656,64 @@ public class StatusMenuController {
         alert.addButton(withTitle: "OK")
         alert.alertStyle = .informational
         alert.runModal()
+    }
+    
+    @objc private func selectCalendars() {
+        guard let (availableCalendars, enabledTitles) = onGetCalendarList?() else { return }
+        
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Select Calendars"
+        alert.informativeText = "Choose which calendars affect your presence status. Uncheck holiday calendars or personal calendars you don't want to monitor."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .bezelBorder
+        
+        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 380, height: 0))
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        
+        var checkboxes: [(NSButton, String)] = []
+        
+        if availableCalendars.isEmpty {
+            let label = NSTextField(labelWithString: "No calendars found")
+            stack.addArrangedSubview(label)
+        } else {
+            for calendar in availableCalendars {
+                let checkbox = NSButton(checkboxWithTitle: "\(calendar.title) (\(calendar.source))", 
+                                        target: nil, 
+                                        action: nil)
+                checkbox.state = enabledTitles.isEmpty || enabledTitles.contains(calendar.title) ? .on : .off
+                stack.addArrangedSubview(checkbox)
+                checkboxes.append((checkbox, calendar.title))
+            }
+        }
+        
+        // Adjust stack height to fit content
+        stack.frame.size.height = CGFloat(availableCalendars.count) * 28 + 20
+        scrollView.documentView = stack
+        
+        alert.accessoryView = scrollView
+        
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            // "Save" was clicked
+            let selectedTitles = checkboxes.compactMap { (checkbox, title) in
+                checkbox.state == .on ? title : nil
+            }
+            // If all are selected, save empty array (means "all")
+            let titlesToSave = selectedTitles.count == availableCalendars.count ? [] : selectedTitles
+            Task {
+                await onUpdateEnabledCalendars?(titlesToSave)
+            }
+        }
     }
 
     @objc private func quitApp() {

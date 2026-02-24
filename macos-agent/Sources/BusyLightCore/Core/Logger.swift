@@ -12,6 +12,7 @@ public final class Logger: @unchecked Sendable {
         case error = "com.busylight.agent.error"
         case calendar = "com.busylight.agent.calendar"
         case network = "com.busylight.agent.network"
+        case meeting = "com.busylight.agent.meeting"
     }
     
     public enum LogLevel {
@@ -71,4 +72,5 @@ public let deviceLogger = Logger(category: .device)
 public let errorLogger = Logger(category: .error)
 public let calendarLogger = Logger(category: .calendar)
 public let networkLogger = Logger(category: .network)
+public let meetingLogger = Logger(category: .meeting)
 

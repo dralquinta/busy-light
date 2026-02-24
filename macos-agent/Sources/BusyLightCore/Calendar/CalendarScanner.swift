@@ -13,8 +13,12 @@ public protocol CalendarEventStoreProtocol: AnyObject {
     /// The implementation should query a window of at least
     /// `toleranceSeconds` on each side of `date` and then return only
     /// events that actually contain `date` within their interval.
+    ///
+    /// - Parameter enabledCalendarTitles: If not empty, only include events from calendars
+    ///   whose titles match these strings. If empty, include all calendars.
     func fetchEventsOverlapping(_ date: Date,
-                                toleranceSeconds: TimeInterval) throws -> [any CalendarEventRepresentable]
+                                toleranceSeconds: TimeInterval,
+                                enabledCalendarTitles: [String]) throws -> [any CalendarEventRepresentable]
 
     /// Flush the store's in-memory cache so the next fetch reads fresh data.
     /// Must be called after receiving `EKEventStoreChanged`.
@@ -43,14 +47,24 @@ final class LiveCalendarEventStore: CalendarEventStoreProtocol {
     }
 
     func fetchEventsOverlapping(_ date: Date,
-                                toleranceSeconds: TimeInterval) throws -> [any CalendarEventRepresentable] {
+                                toleranceSeconds: TimeInterval,
+                                enabledCalendarTitles: [String]) throws -> [any CalendarEventRepresentable] {
         let windowStart = date.addingTimeInterval(-toleranceSeconds)
         let windowEnd   = date.addingTimeInterval(toleranceSeconds)
+
+        // Filter calendars if enabledCalendarTitles is not empty
+        let calendarsToQuery: [EKCalendar]?
+        if !enabledCalendarTitles.isEmpty {
+            let allCalendars = store.calendars(for: .event)
+            calendarsToQuery = allCalendars.filter { enabledCalendarTitles.contains($0.title) }
+        } else {
+            calendarsToQuery = nil  // nil means all calendars
+        }
 
         let predicate = store.predicateForEvents(
             withStart: windowStart,
             end: windowEnd,
-            calendars: nil          // all calendars; scoped filtering can be added later
+            calendars: calendarsToQuery
         )
 
         return store.events(matching: predicate)
@@ -83,6 +97,9 @@ public final class CalendarScanner {
     /// requires a date range for its predicate, not a point query.
     /// Default is 12 hours so that all-day and multi-day events are captured.
     public var queryToleranceSeconds: TimeInterval = 12 * 3600
+    
+    /// List of calendar titles to include. If empty, all calendars are included.
+    public var enabledCalendarTitles: [String] = []
 
     // MARK: - Properties
 
@@ -123,7 +140,9 @@ public final class CalendarScanner {
         let start = Date()
         logger.logEvent("calendar.scan.execute", details: ["query_date": ISO8601DateFormatter().string(from: date)])
 
-        let events = try eventStore.fetchEventsOverlapping(date, toleranceSeconds: queryToleranceSeconds)
+        let events = try eventStore.fetchEventsOverlapping(date, 
+                                                           toleranceSeconds: queryToleranceSeconds,
+                                                           enabledCalendarTitles: enabledCalendarTitles)
 
         let durationMs = Int(Date().timeIntervalSince(start) * 1000)
         logger.logEvent("calendar.scan.result", details: [
@@ -158,6 +177,11 @@ public final class CalendarScanner {
         }
 
         return events
+    }
+
+    /// Returns all available calendars as (title, source) pairs for UI display
+    public func getAvailableCalendars() -> [(title: String, source: String)] {
+        return eventStore.availableCalendarNames()
     }
 
     // MARK: - Helpers
