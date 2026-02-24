@@ -721,6 +721,20 @@ fi
 log "✓ Release version: $VERSION"
 log "✓ Commit: $(git rev-parse --short "$VERSION")"
 
+# Push tag to GitHub if not publishing is skipped
+if [[ "$SKIP_PUBLISH" == "false" ]]; then
+    log "Pushing tag to GitHub..."
+    if git ls-remote --tags origin | grep -q "refs/tags/$VERSION$"; then
+        log "Tag $VERSION already exists on remote"
+    else
+        if git push origin "$VERSION"; then
+            success "Tag $VERSION pushed to GitHub"
+        else
+            fail "Failed to push tag $VERSION to GitHub"
+        fi
+    fi
+fi
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Step 1: Version Stamping
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -781,14 +795,6 @@ else
     fi
     
     publish_github_release "$VERSION" "$DIST_DIR/$DMG_NAME"
-    
-    # Push the tag to GitHub
-    log "Pushing tag to GitHub..."
-    if git push origin "$VERSION"; then
-        success "Tag $VERSION pushed to GitHub"
-    else
-        warn "Failed to push tag (may already exist on remote)"
-    fi
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
