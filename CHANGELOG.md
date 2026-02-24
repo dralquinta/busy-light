@@ -23,7 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Status display now shows detailed context (automatic/manual mode, calendar, meeting type)
 - Google Meet detection refined to only match active meetings (not landing page) using "meet:" pattern
 - Meeting detection now properly clears when resuming calendar control (Ctrl+Cmd+4)
-- Added 5-second suppression period after resuming calendar to prevent stale meeting tabs from re-triggering busy status
+- Added 10-second suppression period after resuming calendar to prevent stale meeting tabs from re-triggering busy status
+- Google Meet and Teams browser tabs left open after meeting ends no longer trigger busy status (requires active indicators: camera/microphone/recording/calling)
 
 ---
 

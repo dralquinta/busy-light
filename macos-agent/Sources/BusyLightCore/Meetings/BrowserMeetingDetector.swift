@@ -110,31 +110,26 @@ public final class BrowserMeetingDetector: MeetingDetectorProtocol, @unchecked S
                 }
             }
             
-            // For Google Meet, require additional active meeting indicators
+            // For Google Meet and Teams, require additional active meeting indicators
             // to prevent false positives from tabs left open after meeting ends
-            if provider == .meet && MeetingProcessInspector.anyTitle(titles, containsAny: patterns) {
-                let hasMeetTitle = titles.contains { title in
+            if (provider == .meet || provider == .teams) && MeetingProcessInspector.anyTitle(titles, containsAny: patterns) {
+                // Check for active meeting indicators (camera/mic usage, recording, etc.)
+                let hasActiveIndicator = titles.contains { title in
                     let lower = title.lowercased()
-                    return lower.contains("meet:")
+                    return lower.contains("camera") || 
+                           lower.contains("microphone") ||
+                           lower.contains("recording") ||
+                           lower.contains("screen shar") ||  // "screen sharing"
+                           lower.contains("calling")          // Teams-specific: "Calling | Microsoft Teams"
                 }
                 
-                if hasMeetTitle {
-                    // Check for active meeting indicators (camera/mic usage, recording, etc.)
-                    let hasActiveIndicator = titles.contains { title in
-                        let lower = title.lowercased()
-                        return lower.contains("camera") || 
-                               lower.contains("microphone") ||
-                               lower.contains("recording") ||
-                               lower.contains("screen shar")  // "screen sharing"
-                    }
-                    
-                    if !hasActiveIndicator {
-                        logger.logEvent("meeting.browser.meet_tab_inactive", details: [
-                            "browser": name,
-                            "reason": "no active indicators (camera/microphone/recording)",
-                        ])
-                        continue  // Skip this browser, check next one
-                    }
+                if !hasActiveIndicator {
+                    logger.logEvent("meeting.browser.tab_inactive", details: [
+                        "browser": name,
+                        "provider": provider.rawValue,
+                        "reason": "no active indicators (camera/microphone/recording/calling)",
+                    ])
+                    continue  // Skip this browser, check next one
                 }
             }
             
