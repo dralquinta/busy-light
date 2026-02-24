@@ -11,6 +11,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     private var hotkeyManager: HotkeyManager?
     private var stateMachine: PresenceStateMachine?
     private var networkClient: NetworkClient?
+    private var meetingEngine: MeetingDetectionEngine?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         lifecycleLogger.logEvent("Application launched")
@@ -194,6 +195,26 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         
         hotkeyMgr.start()
         lifecycleLogger.logEvent("Hotkey manager started")
+
+        // Initialize and start meeting detection engine (if enabled)
+        let meetingConfig = ConfigurationManager.shared
+        if meetingConfig.getMeetingDetectionEnabled() {
+            let engine = MeetingDetectionEngine()
+            engine.pollIntervalSeconds = meetingConfig.getMeetingPollIntervalSeconds()
+            engine.confidenceThreshold = meetingConfig.getMeetingConfidenceThreshold()
+            engine.setProvider(.zoom,  enabled: meetingConfig.getMeetingProviderZoomEnabled())
+            engine.setProvider(.teams, enabled: meetingConfig.getMeetingProviderTeamsEnabled())
+            engine.setProvider(.meet,  enabled: meetingConfig.getMeetingProviderBrowserEnabled())
+            engine.onMeetingStatusChanged = { [weak machine] status in
+                machine?.handleEvent(.meetingDetected(status))
+            }
+            engine.start()
+            meetingEngine = engine
+            lifecycleLogger.logEvent("Meeting detection engine started", details: [
+                "pollInterval": String(engine.pollIntervalSeconds),
+                "threshold": engine.confidenceThreshold.displayName
+            ])
+        }
         
         // Initialize network client for WLED communication
         let client = NetworkClient(config: ConfigurationManager.shared)
@@ -237,6 +258,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         systemMonitor?.stop()
         hotkeyManager?.stop()
         calendarEngine?.stop()
+        meetingEngine?.stop()
         networkClient?.stopHealthMonitoring()
         networkClient?.disconnect()
         lifecycleLogger.logEvent("Monitors stopped")

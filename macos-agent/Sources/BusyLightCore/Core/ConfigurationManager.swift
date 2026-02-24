@@ -86,6 +86,28 @@ public class ConfigurationManager {
         }
         
         configuration.stateStabilizationSeconds = userDefaults.integer(forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
+
+        // Load meeting detection settings
+        if userDefaults.object(forKey: AppConfiguration.CodingKeys.meetingDetectionEnabled.rawValue) != nil {
+            configuration.meetingDetectionEnabled = userDefaults.bool(forKey: AppConfiguration.CodingKeys.meetingDetectionEnabled.rawValue)
+        }
+        if userDefaults.object(forKey: AppConfiguration.CodingKeys.meetingProviderZoomEnabled.rawValue) != nil {
+            configuration.meetingProviderZoomEnabled = userDefaults.bool(forKey: AppConfiguration.CodingKeys.meetingProviderZoomEnabled.rawValue)
+        }
+        if userDefaults.object(forKey: AppConfiguration.CodingKeys.meetingProviderTeamsEnabled.rawValue) != nil {
+            configuration.meetingProviderTeamsEnabled = userDefaults.bool(forKey: AppConfiguration.CodingKeys.meetingProviderTeamsEnabled.rawValue)
+        }
+        if userDefaults.object(forKey: AppConfiguration.CodingKeys.meetingProviderBrowserEnabled.rawValue) != nil {
+            configuration.meetingProviderBrowserEnabled = userDefaults.bool(forKey: AppConfiguration.CodingKeys.meetingProviderBrowserEnabled.rawValue)
+        }
+        let rawThreshold = userDefaults.integer(forKey: AppConfiguration.CodingKeys.meetingConfidenceThreshold.rawValue)
+        if rawThreshold != 0 {
+            configuration.meetingConfidenceThreshold = rawThreshold
+        }
+        let rawInterval = userDefaults.double(forKey: AppConfiguration.CodingKeys.meetingPollIntervalSeconds.rawValue)
+        if rawInterval > 0 {
+            configuration.meetingPollIntervalSeconds = rawInterval
+        }
         
         // Load hotkey bindings
         if let savedBindings = userDefaults.dictionary(forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue) as? [String: NSNumber] {
@@ -147,6 +169,14 @@ public class ConfigurationManager {
         // Save hotkey bindings
         let bindingsDict = configuration.hotkeyBindings.mapValues { NSNumber(value: $0) }
         userDefaults.set(bindingsDict, forKey: AppConfiguration.CodingKeys.hotkeyBindings.rawValue)
+
+        // Save meeting detection settings
+        userDefaults.set(configuration.meetingDetectionEnabled, forKey: AppConfiguration.CodingKeys.meetingDetectionEnabled.rawValue)
+        userDefaults.set(configuration.meetingProviderZoomEnabled, forKey: AppConfiguration.CodingKeys.meetingProviderZoomEnabled.rawValue)
+        userDefaults.set(configuration.meetingProviderTeamsEnabled, forKey: AppConfiguration.CodingKeys.meetingProviderTeamsEnabled.rawValue)
+        userDefaults.set(configuration.meetingProviderBrowserEnabled, forKey: AppConfiguration.CodingKeys.meetingProviderBrowserEnabled.rawValue)
+        userDefaults.set(configuration.meetingConfidenceThreshold, forKey: AppConfiguration.CodingKeys.meetingConfidenceThreshold.rawValue)
+        userDefaults.set(configuration.meetingPollIntervalSeconds, forKey: AppConfiguration.CodingKeys.meetingPollIntervalSeconds.rawValue)
         
         userDefaults.synchronize()
         configLogger.logEvent("Configuration saved", details: [
@@ -384,5 +414,61 @@ public class ConfigurationManager {
         configLogger.logEvent("hotkey.bindings.saved", details: [
             "bindingsCount": String(bindings.count)
         ])
+    }
+
+    // MARK: - Meeting Detection Configuration
+
+    public func getMeetingDetectionEnabled() -> Bool {
+        return configuration.meetingDetectionEnabled
+    }
+
+    public func setMeetingDetectionEnabled(_ enabled: Bool) {
+        configuration.meetingDetectionEnabled = enabled
+        saveConfiguration()
+    }
+
+    public func getMeetingProviderZoomEnabled() -> Bool {
+        return configuration.meetingProviderZoomEnabled
+    }
+
+    public func setMeetingProviderZoomEnabled(_ enabled: Bool) {
+        configuration.meetingProviderZoomEnabled = enabled
+        saveConfiguration()
+    }
+
+    public func getMeetingProviderTeamsEnabled() -> Bool {
+        return configuration.meetingProviderTeamsEnabled
+    }
+
+    public func setMeetingProviderTeamsEnabled(_ enabled: Bool) {
+        configuration.meetingProviderTeamsEnabled = enabled
+        saveConfiguration()
+    }
+
+    public func getMeetingProviderBrowserEnabled() -> Bool {
+        return configuration.meetingProviderBrowserEnabled
+    }
+
+    public func setMeetingProviderBrowserEnabled(_ enabled: Bool) {
+        configuration.meetingProviderBrowserEnabled = enabled
+        saveConfiguration()
+    }
+
+    public func getMeetingConfidenceThreshold() -> MeetingConfidence {
+        return MeetingConfidence(rawValue: configuration.meetingConfidenceThreshold) ?? .high
+    }
+
+    public func setMeetingConfidenceThreshold(_ threshold: MeetingConfidence) {
+        configuration.meetingConfidenceThreshold = threshold.rawValue
+        saveConfiguration()
+    }
+
+    public func getMeetingPollIntervalSeconds() -> Double {
+        return configuration.meetingPollIntervalSeconds
+    }
+
+    public func setMeetingPollIntervalSeconds(_ seconds: Double) {
+        configuration.meetingPollIntervalSeconds = max(1.0, seconds)
+        saveConfiguration()
     }
 }

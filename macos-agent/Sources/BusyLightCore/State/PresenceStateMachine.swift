@@ -13,6 +13,10 @@ public final class PresenceStateMachine {
     private(set) public var currentState: PresenceState
     private(set) public var currentMode: OperatingMode
     private(set) public var currentSource: StateSource
+
+    /// The reason the system is currently showing the user as busy.
+    /// Updated on every successful transition for logging and UI metadata.
+    private(set) public var currentBusyReason: BusyReason = .unknown
     
     /// State to restore when system returns from away
     private var stateBeforeSystemAway: (state: PresenceState, source: StateSource)?
@@ -111,6 +115,9 @@ public final class PresenceStateMachine {
             
         case .hotkeyPressed(let newState):
             handleHotkeyOverride(newState)
+
+        case .meetingDetected(let meetingStatus):
+            handleMeetingDetected(meetingStatus)
         }
     }
     
@@ -174,6 +181,56 @@ public final class PresenceStateMachine {
         
         // Apply transition with optional stabilization
         applyStateTransition(to: newState, source: .calendar)
+    }
+
+    private func handleMeetingDetected(_ meetingStatus: MeetingStatus) {
+        // Ignore when system is off or in manual mode
+        guard currentMode != .off else {
+            uiLogger.logEvent("state.transition.ignored", details: [
+                "reason": "system-is-off",
+                "source": "meeting"
+            ])
+            return
+        }
+
+        switch meetingStatus {
+        case .inMeeting(let confidence, let provider, let signal):
+            // Only transition to busy when confidence is sufficient.
+            let validation = StateTransition.isAllowed(
+                from: currentState,
+                to: .busy,
+                currentSource: currentSource,
+                requestedBy: .meeting,
+                mode: currentMode
+            )
+            guard validation.allowed else {
+                uiLogger.logEvent("state.transition.blocked", details: [
+                    "reason": validation.reason ?? "unknown",
+                    "requestedBy": "meeting",
+                    "provider": provider.rawValue,
+                    "confidence": confidence.displayName
+                ])
+                return
+            }
+            uiLogger.logEvent("meeting.detected", details: [
+                "provider": provider.rawValue,
+                "confidence": confidence.displayName,
+                "signal": signal.rawValue
+            ])
+            applyStateTransition(to: .busy, source: .meeting, meetingProvider: provider)
+
+        case .none:
+            // Meeting ended — if the last busy was triggered by meeting detection,
+            // revert to calendar-driven state by requesting a fresh sync.
+            if currentSource == .meeting {
+                uiLogger.logEvent("meeting.ended", details: [
+                    "previousProvider": currentBusyReason.rawValue
+                ])
+                // Reset source so calendar can take over again.
+                currentSource = .startup
+                onRequestCalendarSync?()
+            }
+        }
     }
     
     private func handleManualOverride(_ newState: PresenceState) {
@@ -326,6 +383,7 @@ public final class PresenceStateMachine {
     private func applyStateTransition(
         to newState: PresenceState,
         source: StateSource,
+        meetingProvider: MeetingProvider? = nil,
         forceUpdate: Bool = false
     ) {
         let previousState = currentState
@@ -345,6 +403,7 @@ public final class PresenceStateMachine {
                         self?.executeStateTransition(
                             to: newState,
                             source: source,
+                            meetingProvider: meetingProvider,
                             previousState: previousState,
                             previousSource: previousSource
                         )
@@ -363,6 +422,7 @@ public final class PresenceStateMachine {
         executeStateTransition(
             to: newState,
             source: source,
+            meetingProvider: meetingProvider,
             previousState: previousState,
             previousSource: previousSource
         )
@@ -371,22 +431,47 @@ public final class PresenceStateMachine {
     private func executeStateTransition(
         to newState: PresenceState,
         source: StateSource,
+        meetingProvider: MeetingProvider? = nil,
         previousState: PresenceState,
         previousSource: StateSource
     ) {
         currentState = newState
         currentSource = source
+
+        // Update busyReason metadata
+        currentBusyReason = deriveBusyReason(state: newState, source: source, provider: meetingProvider)
         
         uiLogger.logEvent("state.transition.success", details: [
             "from": previousState.rawValue,
             "to": newState.rawValue,
             "source": source.rawValue,
             "mode": currentMode.rawValue,
-            "previousSource": previousSource.rawValue
+            "previousSource": previousSource.rawValue,
+            "busyReason": currentBusyReason.rawValue
         ])
         
         // Notify observers
         onStateChanged?(newState, source)
+    }
+
+    private func deriveBusyReason(
+        state: PresenceState,
+        source: StateSource,
+        provider: MeetingProvider?
+    ) -> BusyReason {
+        guard state == .busy else { return .unknown }
+        switch source {
+        case .meeting:
+            switch provider {
+            case .zoom:  return .zoom
+            case .teams: return .teams
+            case .meet:  return .meet
+            case nil:    return .unknown
+            }
+        case .manual:   return .manual
+        case .calendar: return .calendar
+        default:        return .unknown
+        }
     }
     
     private func setMode(_ newMode: OperatingMode) {

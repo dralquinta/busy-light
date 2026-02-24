@@ -30,4 +30,7 @@ public enum StateEvent: Sendable {
     
     /// Hotkey (F13–F20) triggered a manual state override
     case hotkeyPressed(PresenceState)
+
+    /// Meeting detection engine reported a status change
+    case meetingDetected(MeetingStatus)
 }

@@ -52,7 +52,21 @@ public struct AppConfiguration: Codable, Sendable {
         PresenceState.away.rawValue: 22,        // 6 key (with modifiers: Control + Cmd)
     ]
     
-    public static let defaultConfiguration = AppConfiguration()
+    // MARK: - Meeting Detection Configuration
+
+    /// Enable/disable unscheduled meeting detection (default: true)
+    public var meetingDetectionEnabled: Bool = true
+    /// Enable Zoom native-app detection (default: true)
+    public var meetingProviderZoomEnabled: Bool = true
+    /// Enable Microsoft Teams native-app detection (default: true)
+    public var meetingProviderTeamsEnabled: Bool = true
+    /// Enable Google Meet / Teams web / Zoom web browser detection (default: true)
+    public var meetingProviderBrowserEnabled: Bool = true
+    /// Minimum confidence threshold — meetings below this level are ignored.
+    /// Stored as raw Int (MeetingConfidence.rawValue). Default: 3 (high).
+    public var meetingConfidenceThreshold: Int = 3
+    /// How often the meeting detectors are polled, in seconds (default: 3)
+    public var meetingPollIntervalSeconds: Double = 3.0
     
     public init() {}
     
@@ -75,5 +89,11 @@ public struct AppConfiguration: Codable, Sendable {
         case manualOverrideTimeoutMinutes = "app.manual_override_timeout"
         case stateStabilizationSeconds = "app.state_stabilization"
         case hotkeyBindings = "app.hotkey_bindings"
+        case meetingDetectionEnabled = "app.meeting_detection_enabled"
+        case meetingProviderZoomEnabled = "app.meeting_provider_zoom_enabled"
+        case meetingProviderTeamsEnabled = "app.meeting_provider_teams_enabled"
+        case meetingProviderBrowserEnabled = "app.meeting_provider_browser_enabled"
+        case meetingConfidenceThreshold = "app.meeting_confidence_threshold"
+        case meetingPollIntervalSeconds = "app.meeting_poll_interval_seconds"
     }
 }
