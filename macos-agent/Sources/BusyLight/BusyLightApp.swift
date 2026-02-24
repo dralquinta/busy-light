@@ -142,6 +142,9 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             } else if engine.currentState == .available {
                 controller.setCalendarEngineStatus("Active")
             }
+            
+            // Refresh calendar menu now that permissions are granted and engine is active
+            controller.refreshCalendarMenu()
             // If state != .available, applyCalendarState already set the label.
         }
 

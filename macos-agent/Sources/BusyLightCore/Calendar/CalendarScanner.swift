@@ -23,6 +23,10 @@ public protocol CalendarEventStoreProtocol: AnyObject {
     /// Flush the store's in-memory cache so the next fetch reads fresh data.
     /// Must be called after receiving `EKEventStoreChanged`.
     func reset()
+    
+    /// Forces a sync with remote calendar servers (CalDAV, Exchange, etc.)
+    /// Call before fetching to ensure latest Gmail/Outlook events are available.
+    func refreshSources()
 
     /// Returns a list of all calendars visible to EventKit as (title, source) pairs.
     /// Used for diagnostics only — e.g. to confirm Google/Outlook accounts are synced.
@@ -32,6 +36,7 @@ public protocol CalendarEventStoreProtocol: AnyObject {
 // Default implementation so existing mocks don't need to conform.
 extension CalendarEventStoreProtocol {
     func availableCalendarNames() -> [(title: String, source: String)] { [] }
+    func refreshSources() { } // No-op for mocks
 }
 
 // MARK: - Production store wrapper
@@ -56,7 +61,24 @@ final class LiveCalendarEventStore: CalendarEventStoreProtocol {
         let calendarsToQuery: [EKCalendar]?
         if !enabledCalendarTitles.isEmpty {
             let allCalendars = store.calendars(for: .event)
-            calendarsToQuery = allCalendars.filter { enabledCalendarTitles.contains($0.title) }
+            let matchedCalendars = allCalendars.filter { enabledCalendarTitles.contains($0.title) }
+            
+            // If filter is configured but matches NO calendars, fall back to all calendars
+            // This prevents the app from silently ignoring all events due to misconfiguration
+            if matchedCalendars.isEmpty {
+                calendarLogger.logEvent("calendar.filter.no_matches", details: [
+                    "configured_titles": enabledCalendarTitles.joined(separator: ", "),
+                    "available_count": String(allCalendars.count),
+                    "fallback": "all_calendars"
+                ])
+                calendarsToQuery = nil  // Fall back to all calendars
+            } else {
+                calendarLogger.logEvent("calendar.filter.applied", details: [
+                    "matched_count": String(matchedCalendars.count),
+                    "total_count": String(allCalendars.count)
+                ])
+                calendarsToQuery = matchedCalendars
+            }
         } else {
             calendarsToQuery = nil  // nil means all calendars
         }
@@ -74,6 +96,11 @@ final class LiveCalendarEventStore: CalendarEventStoreProtocol {
 
     func reset() {
         store.reset()
+    }
+    
+    func refreshSources() {
+        // Force CalDAV/Exchange sync to get latest events from remote servers (Gmail, Outlook, etc.)
+        store.refreshSourcesIfNecessary()
     }
 
     func availableCalendarNames() -> [(title: String, source: String)] {
@@ -130,6 +157,12 @@ public final class CalendarScanner {
     public func resetStore() {
         eventStore.reset()
     }
+    
+    /// Forces a sync with remote calendar sources (CalDAV/Exchange).
+    /// Useful before scanning to ensure Gmail/Outlook events are up-to-date.
+    public func refreshRemoteSources() {
+        eventStore.refreshSources()
+    }
 
     /// Returns all events that overlap `date` (defaults to `Date()` = now).
     ///
@@ -182,6 +215,47 @@ public final class CalendarScanner {
     /// Returns all available calendars as (title, source) pairs for UI display
     public func getAvailableCalendars() -> [(title: String, source: String)] {
         return eventStore.availableCalendarNames()
+    }
+    
+    /// Validates the current calendar filter configuration and logs warnings if misconfigured.
+    /// Call this after setting enabledCalendarTitles to help diagnose filter issues.
+    public func validateCalendarFilter() {
+        guard !enabledCalendarTitles.isEmpty else {
+            logger.logEvent("calendar.filter.validation", details: [
+                "status": "disabled",
+                "message": "All calendars enabled (no filter)"
+            ])
+            return
+        }
+        
+        let allCalendars = eventStore.availableCalendarNames()
+        let matchedTitles = allCalendars.map(\.title).filter { enabledCalendarTitles.contains($0) }
+        let unmatchedTitles = enabledCalendarTitles.filter { title in
+            !allCalendars.contains(where: { $0.title == title })
+        }
+        
+        if matchedTitles.isEmpty {
+            logger.logEvent("calendar.filter.validation", details: [
+                "status": "error",
+                "message": "NO calendars match the configured filter",
+                "configured": enabledCalendarTitles.joined(separator: ", "),
+                "available": allCalendars.map(\.title).joined(separator: ", ")
+            ])
+        } else if !unmatchedTitles.isEmpty {
+            logger.logEvent("calendar.filter.validation", details: [
+                "status": "warning",
+                "message": "Some configured calendars not found",
+                "matched_count": String(matchedTitles.count),
+                "unmatched": unmatchedTitles.joined(separator: ", "),
+                "available": allCalendars.map(\.title).joined(separator: ", ")
+            ])
+        } else {
+            logger.logEvent("calendar.filter.validation", details: [
+                "status": "ok",
+                "matched_count": String(matchedTitles.count),
+                "total_available": String(allCalendars.count)
+            ])
+        }
     }
 
     // MARK: - Helpers

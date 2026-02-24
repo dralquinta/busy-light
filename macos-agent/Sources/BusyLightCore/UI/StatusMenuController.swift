@@ -64,6 +64,10 @@ public class StatusMenuController {
 
     /// Items in the Override Timeout submenu — kept for checkmark updates.
     private var timeoutMenuItems: [NSMenuItem] = []
+    
+    /// Items in the Calendar submenu — kept for checkmark updates.
+    private var calendarMenuItems: [(menuItem: NSMenuItem, title: String)] = []
+    private var calendarMenuItem: NSMenuItem?
 
     /// Timeout options shown in the menu: (label, minutes — nil means never)
     private let timeoutOptions: [(label: String, minutes: Int?)] = [
@@ -249,17 +253,20 @@ public class StatusMenuController {
         overrideParent.submenu = overrideMenu
         debugMenu.addItem(overrideParent)
 
-        let debugParent = NSMenuItem(title: "Debug", action: nil, keyEquivalent: "")
+        let debugParent = NSMenuItem(title: "🐛 Debug", action: nil, keyEquivalent: "")
         debugParent.submenu = debugMenu
         menu.addItem(debugParent)
         #endif
 
         menu.addItem(NSMenuItem.separator())
         
-        // Calendar selection
-        let selectCalendarsItem = NSMenuItem(title: "Select Calendars…", action: #selector(selectCalendars), keyEquivalent: "")
-        selectCalendarsItem.target = self
-        menu.addItem(selectCalendarsItem)
+        // Calendar selection submenu
+        let calendarMenu = NSMenu(title: "Calendars")
+        buildCalendarMenu(calendarMenu)
+        
+        calendarMenuItem = NSMenuItem(title: "Calendars", action: nil, keyEquivalent: "")
+        calendarMenuItem?.submenu = calendarMenu
+        menu.addItem(calendarMenuItem!)
         
         settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem?.target = self
@@ -400,6 +407,13 @@ public class StatusMenuController {
     /// Called when the calendar engine starts or stops to update the menu label.
     public func setCalendarEngineStatus(_ label: String) {
         calendarStatusItem?.title = "Calendar: \(label)"
+    }
+    
+    /// Refreshes the calendar submenu with current available calendars.
+    /// Call this after calendar permissions are granted or calendars change.
+    public func refreshCalendarMenu() {
+        guard let submenu = calendarMenuItem?.submenu else { return }
+        buildCalendarMenu(submenu)
     }
     
     public func updateDeviceStatus(_ status: DeviceStatus) {
@@ -658,60 +672,85 @@ public class StatusMenuController {
         alert.runModal()
     }
     
-    @objc private func selectCalendars() {
-        guard let (availableCalendars, enabledTitles) = onGetCalendarList?() else { return }
+    /// Builds the calendar submenu with checkboxes for each calendar
+    private func buildCalendarMenu(_ calendarMenu: NSMenu) {
+        calendarMenu.removeAllItems()
+        calendarMenuItems.removeAll()
         
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Select Calendars"
-        alert.informativeText = "Choose which calendars affect your presence status. Uncheck holiday calendars or personal calendars you don't want to monitor."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-        
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.borderType = .bezelBorder
-        
-        let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 380, height: 0))
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 8
-        stack.edgeInsets = NSEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
-        
-        var checkboxes: [(NSButton, String)] = []
-        
-        if availableCalendars.isEmpty {
-            let label = NSTextField(labelWithString: "No calendars found")
-            stack.addArrangedSubview(label)
-        } else {
-            for calendar in availableCalendars {
-                let checkbox = NSButton(checkboxWithTitle: "\(calendar.title) (\(calendar.source))", 
-                                        target: nil, 
-                                        action: nil)
-                checkbox.state = enabledTitles.isEmpty || enabledTitles.contains(calendar.title) ? .on : .off
-                stack.addArrangedSubview(checkbox)
-                checkboxes.append((checkbox, calendar.title))
-            }
+        guard let (availableCalendars, enabledTitles) = onGetCalendarList?() else {
+            let item = NSMenuItem(title: "No calendars available", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            calendarMenu.addItem(item)
+            return
         }
         
-        // Adjust stack height to fit content
-        stack.frame.size.height = CGFloat(availableCalendars.count) * 28 + 20
-        scrollView.documentView = stack
+        if availableCalendars.isEmpty {
+            let item = NSMenuItem(title: "No calendars found", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            calendarMenu.addItem(item)
+            return
+        }
         
-        alert.accessoryView = scrollView
+        // Add "All Calendars" option at the top
+        let allItem = NSMenuItem(title: "All Calendars", action: #selector(toggleAllCalendars), keyEquivalent: "")
+        allItem.target = self
+        allItem.state = enabledTitles.isEmpty ? .on : .off
+        calendarMenu.addItem(allItem)
+        calendarMenu.addItem(NSMenuItem.separator())
         
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            // "Save" was clicked
-            let selectedTitles = checkboxes.compactMap { (checkbox, title) in
-                checkbox.state == .on ? title : nil
+        // Add individual calendar items
+        for calendar in availableCalendars {
+            let item = NSMenuItem(
+                title: "\(calendar.title) (\(calendar.source))",
+                action: #selector(toggleCalendar(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = calendar.title
+            item.state = (enabledTitles.isEmpty || enabledTitles.contains(calendar.title)) ? .on : .off
+            calendarMenu.addItem(item)
+            calendarMenuItems.append((item, calendar.title))
+        }
+        
+        uiLogger.logEvent("Calendar menu built", details: [
+            "count": String(availableCalendars.count),
+            "enabled": enabledTitles.isEmpty ? "all" : String(enabledTitles.count)
+        ])
+    }
+    
+    @objc private func toggleAllCalendars() {
+        // Enable all calendars (empty array means all)
+        Task {
+            await onUpdateEnabledCalendars?([])
+            // Rebuild menu to update checkmarks
+            if let submenu = calendarMenuItem?.submenu {
+                buildCalendarMenu(submenu)
             }
-            // If all are selected, save empty array (means "all")
-            let titlesToSave = selectedTitles.count == availableCalendars.count ? [] : selectedTitles
-            Task {
-                await onUpdateEnabledCalendars?(titlesToSave)
+        }
+    }
+    
+    @objc private func toggleCalendar(_ sender: NSMenuItem) {
+        guard let toggledTitle = sender.representedObject as? String,
+              let (availableCalendars, enabledTitles) = onGetCalendarList?() else { return }
+        
+        var newEnabledTitles = enabledTitles.isEmpty ? availableCalendars.map(\.title) : enabledTitles
+        
+        if newEnabledTitles.contains(toggledTitle) {
+            // Uncheck this calendar
+            newEnabledTitles.removeAll { $0 == toggledTitle }
+        } else {
+            // Check this calendar
+            newEnabledTitles.append(toggledTitle)
+        }
+        
+        // If all calendars are now selected, save empty array (means "all")
+        let titlesToSave = newEnabledTitles.count == availableCalendars.count ? [] : newEnabledTitles
+        
+        Task {
+            await onUpdateEnabledCalendars?(titlesToSave)
+            // Rebuild menu to update checkmarks
+            if let submenu = calendarMenuItem?.submenu {
+                buildCalendarMenu(submenu)
             }
         }
     }

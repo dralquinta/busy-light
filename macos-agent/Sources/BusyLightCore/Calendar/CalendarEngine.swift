@@ -99,6 +99,10 @@ public final class CalendarEngine {
 
         isRunning = true
         isActive  = true
+        
+        // Validate calendar filter configuration and log any issues
+        scanner.validateCalendarFilter()
+        
         await performScan()
         scheduleTimer()
         subscribeToStoreChanges()
@@ -153,6 +157,10 @@ public final class CalendarEngine {
     private func performScan() async {
         let scanStart = Date()
         logger.logEvent("calendar.scan.start")
+        
+        // Force sync with remote calendar servers (Gmail, Outlook, etc.) before scanning
+        // This ensures CalDAV/Exchange calendars have the latest events
+        scanner.refreshRemoteSources()
 
         do {
             let events = try scanner.fetchCurrentEvents()
