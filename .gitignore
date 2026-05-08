@@ -17,3 +17,4 @@ DerivedData/
 # Environment and local
 .env
 .env.local
+.vscode/
