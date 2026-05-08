@@ -23,6 +23,9 @@ public final class PresenceStateMachine {
     
     /// Expiration time for manual overrides (nil = no expiration)
     private var manualOverrideExpiry: Date?
+
+    /// Tracks whether off mode was entered automatically by office-hours logic.
+    private var isOffBecauseOutsideOfficeHours = false
     
     /// Timer for checking manual override expiration
     private var expiryCheckTask: Task<Void, Never>?
@@ -113,6 +116,9 @@ public final class PresenceStateMachine {
 
         case .turnOff:
             handleTurnOff()
+
+        case .officeHoursChanged(let isWithinOfficeHours):
+            applyOfficeHours(isWithinOfficeHours: isWithinOfficeHours)
             
         case .hotkeyPressed(let newState):
             handleHotkeyOverride(newState)
@@ -137,6 +143,23 @@ public final class PresenceStateMachine {
             mode: currentMode
         )
         return result.allowed
+    }
+
+    /// Applies automatic office-hours gating. Outside office hours the light is off;
+    /// when office hours resume, only an automatic office-hours off is resumed.
+    public func applyOfficeHours(isWithinOfficeHours: Bool) {
+        if isWithinOfficeHours {
+            guard isOffBecauseOutsideOfficeHours else { return }
+
+            isOffBecauseOutsideOfficeHours = false
+            handleResumeAuto()
+            return
+        }
+
+        guard currentMode != .off, currentMode != .manual else { return }
+
+        isOffBecauseOutsideOfficeHours = true
+        turnOff(trigger: "outside-office-hours", source: .officeHours)
     }
     
     // MARK: - Event Handlers
@@ -240,6 +263,7 @@ public final class PresenceStateMachine {
         // Cancel any pending stabilization when user explicitly overrides
         stabilizationTask?.cancel()
         stabilizationTask = nil
+        isOffBecauseOutsideOfficeHours = false
         
         // Manual override always succeeds (unless system away is active)
         if currentSource == .system {
@@ -340,6 +364,7 @@ public final class PresenceStateMachine {
         // Cancel any pending state stabilization to ensure immediate effect
         stabilizationTask?.cancel()
         stabilizationTask = nil
+        isOffBecauseOutsideOfficeHours = false
         
         // Reset source to startup so the incoming calendar update is not blocked
         // by the stale manual source priority when it arrives after the sync.
@@ -357,6 +382,11 @@ public final class PresenceStateMachine {
     }
 
     private func handleTurnOff() {
+        isOffBecauseOutsideOfficeHours = false
+        turnOff(trigger: "user-requested", source: .startup)
+    }
+
+    private func turnOff(trigger: String, source: StateSource) {
         // Cancel any pending overrides or stabilization
         manualOverrideExpiry = nil
         expiryCheckTask?.cancel()
@@ -369,10 +399,10 @@ public final class PresenceStateMachine {
 
         // Switch to off mode and apply .off presence state
         setMode(.off)
-        applyStateTransition(to: .off, source: .startup, forceUpdate: true)
+        applyStateTransition(to: .off, source: source, forceUpdate: true)
 
         uiLogger.logEvent("state.system.off", details: [
-            "trigger": "user-requested"
+            "trigger": trigger
         ])
     }
     

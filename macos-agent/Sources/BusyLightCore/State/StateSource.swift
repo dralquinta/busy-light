@@ -13,20 +13,24 @@ public enum StateSource: String, Sendable, Codable {
     /// State set manually by the user via UI override
     case manual
 
+    /// State set by automatic office-hours gating
+    case officeHours
+
     /// State forced by system events (screen lock, sleep) - highest precedence
     case system
 
     /// Initial state at application startup
     case startup
 
-    /// Priority level for precedence rules: system > manual > calendar = meeting
+    /// Priority level for precedence rules: system > manual = office hours > calendar = meeting
     public var priority: Int {
         switch self {
-        case .system:   return 3
-        case .manual:   return 2
-        case .calendar: return 1
-        case .meeting:  return 1
-        case .startup:  return 0
+        case .system:      return 3
+        case .officeHours: return 2
+        case .manual:      return 2
+        case .calendar:    return 1
+        case .meeting:     return 1
+        case .startup:     return 0
         }
     }
 }

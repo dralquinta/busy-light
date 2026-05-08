@@ -1,5 +1,189 @@
 import Foundation
 
+/// Simple daily office-hours window used to decide whether automatic presence
+/// should communicate to the light or leave it off.
+public struct OfficeHoursConfiguration: Codable, Equatable, Sendable {
+    private static let weekdayLabels: [(label: String, value: Int)] = [
+        ("Sun", 1), ("Mon", 2), ("Tue", 3), ("Wed", 4), ("Thu", 5), ("Fri", 6), ("Sat", 7)
+    ]
+
+    public static let defaultConfiguration = OfficeHoursConfiguration(
+        isEnabled: true,
+        startMinuteOfDay: 9 * 60,
+        endMinuteOfDay: 17 * 60,
+        activeWeekdays: [2, 3, 4, 5, 6]
+    )
+
+    public var isEnabled: Bool = false
+    public var startMinuteOfDay: Int = 9 * 60
+    public var endMinuteOfDay: Int = 17 * 60
+    public var activeWeekdays: Set<Int> = [2, 3, 4, 5, 6]
+
+    public init(
+        isEnabled: Bool = false,
+        startMinuteOfDay: Int = 9 * 60,
+        endMinuteOfDay: Int = 17 * 60,
+        activeWeekdays: Set<Int> = [2, 3, 4, 5, 6]
+    ) {
+        self.isEnabled = isEnabled
+        self.startMinuteOfDay = Self.normalizedMinute(startMinuteOfDay)
+        self.endMinuteOfDay = Self.normalizedMinute(endMinuteOfDay)
+        self.activeWeekdays = Self.normalizedWeekdays(activeWeekdays)
+    }
+
+    public func contains(minuteOfDay rawMinuteOfDay: Int) -> Bool {
+        guard isEnabled else { return true }
+
+        let minuteOfDay = Self.normalizedMinute(rawMinuteOfDay)
+        if startMinuteOfDay == endMinuteOfDay {
+            return true
+        }
+
+        if startMinuteOfDay < endMinuteOfDay {
+            return minuteOfDay >= startMinuteOfDay && minuteOfDay < endMinuteOfDay
+        }
+
+        return minuteOfDay >= startMinuteOfDay || minuteOfDay < endMinuteOfDay
+    }
+
+    public func contains(_ date: Date, calendar: Calendar = .current) -> Bool {
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        let weekday = calendar.component(.weekday, from: date)
+        let minuteOfDay = (components.hour ?? 0) * 60 + (components.minute ?? 0)
+
+        guard isEnabled else { return true }
+
+        if startMinuteOfDay == endMinuteOfDay {
+            return activeWeekdays.contains(weekday)
+        }
+
+        if startMinuteOfDay < endMinuteOfDay {
+            return activeWeekdays.contains(weekday) && contains(minuteOfDay: minuteOfDay)
+        }
+
+        if minuteOfDay >= startMinuteOfDay {
+            return activeWeekdays.contains(weekday)
+        }
+
+        return minuteOfDay < endMinuteOfDay && activeWeekdays.contains(Self.previousWeekday(before: weekday))
+    }
+
+    public static func normalizedMinute(_ minuteOfDay: Int) -> Int {
+        return min(max(minuteOfDay, 0), (24 * 60) - 1)
+    }
+
+    public static func normalizedWeekdays(_ weekdays: Set<Int>) -> Set<Int> {
+        return Set(weekdays.filter { (1...7).contains($0) })
+    }
+
+    public var scheduleDescription: String {
+        let weekdayPart = Self.weekdayDescription(for: activeWeekdays)
+        return "\(weekdayPart) \(Self.formattedMinute(startMinuteOfDay))-\(Self.formattedMinute(endMinuteOfDay))"
+    }
+
+    public static func parseSchedule(_ rawValue: String) -> OfficeHoursConfiguration? {
+        let trimmedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = trimmedValue.split(separator: " ", omittingEmptySubsequences: true)
+        guard parts.count == 2,
+              let weekdays = parseWeekdays(String(parts[0])),
+              let timeRange = parseTimeRange(String(parts[1])) else {
+            return nil
+        }
+
+        return OfficeHoursConfiguration(
+            isEnabled: true,
+            startMinuteOfDay: timeRange.start,
+            endMinuteOfDay: timeRange.end,
+            activeWeekdays: weekdays
+        )
+    }
+
+    public static func formattedMinute(_ minuteOfDay: Int) -> String {
+        let normalized = normalizedMinute(minuteOfDay)
+        return String(format: "%02d:%02d", normalized / 60, normalized % 60)
+    }
+
+    private static func previousWeekday(before weekday: Int) -> Int {
+        return weekday == 1 ? 7 : weekday - 1
+    }
+
+    private static func parseWeekdays(_ rawValue: String) -> Set<Int>? {
+        let groups = rawValue.split(separator: ",", omittingEmptySubsequences: true)
+        guard !groups.isEmpty else { return nil }
+
+        var weekdays = Set<Int>()
+        for group in groups {
+            let rangeParts = group.split(separator: "-", omittingEmptySubsequences: true)
+            if rangeParts.count == 1 {
+                guard let weekday = weekdayValue(String(rangeParts[0])) else { return nil }
+                weekdays.insert(weekday)
+            } else if rangeParts.count == 2 {
+                guard let start = weekdayValue(String(rangeParts[0])),
+                      let end = weekdayValue(String(rangeParts[1])) else {
+                    return nil
+                }
+
+                var current = start
+                while true {
+                    weekdays.insert(current)
+                    if current == end { break }
+                    current = current == 7 ? 1 : current + 1
+                }
+            } else {
+                return nil
+            }
+        }
+
+        return weekdays.isEmpty ? nil : weekdays
+    }
+
+    private static func parseTimeRange(_ rawValue: String) -> (start: Int, end: Int)? {
+        let timeParts = rawValue.split(separator: "-", omittingEmptySubsequences: true)
+        guard timeParts.count == 2,
+              let start = parseTime(String(timeParts[0])),
+              let end = parseTime(String(timeParts[1])) else {
+            return nil
+        }
+
+        return (start, end)
+    }
+
+    private static func parseTime(_ rawValue: String) -> Int? {
+        let parts = rawValue.split(separator: ":", omittingEmptySubsequences: true)
+        guard parts.count == 2,
+              let hour = Int(parts[0]),
+              let minute = Int(parts[1]),
+              (0...23).contains(hour),
+              (0...59).contains(minute) else {
+            return nil
+        }
+
+        return hour * 60 + minute
+    }
+
+    private static func weekdayValue(_ rawValue: String) -> Int? {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return weekdayLabels.first { item in
+            item.label.lowercased() == normalized
+        }?.value
+    }
+
+    private static func weekdayDescription(for weekdays: Set<Int>) -> String {
+        let normalizedWeekdays = weekdayLabels.filter { weekdays.contains($0.value) }
+        guard !normalizedWeekdays.isEmpty else { return "Mon-Fri" }
+
+        if weekdays == [2, 3, 4, 5, 6] {
+            return "Mon-Fri"
+        }
+
+        if weekdays == [1, 2, 3, 4, 5, 6, 7] {
+            return "Sun-Sat"
+        }
+
+        return normalizedWeekdays.map(\.label).joined(separator: ",")
+    }
+}
+
 /// Configuration settings persisted via UserDefaults.
 public struct AppConfiguration: Codable, Sendable {
     public static let minimumWledHttpTimeout = 2_500
@@ -44,6 +228,8 @@ public struct AppConfiguration: Codable, Sendable {
     public var manualOverrideTimeoutMinutes: Int? = 30
     /// State stabilization delay in seconds to prevent flapping (default 0 = disabled)
     public var stateStabilizationSeconds: Int = 0
+    /// Daily office-hours window. When enabled, automatic presence is off outside this window.
+    public var officeHours: OfficeHoursConfiguration = .defaultConfiguration
     /// Hotkey bindings: maps presence states to Carbon virtual key codes
     /// Control+Cmd combinations: 1=available, 2=tentative, 3=busy, 6=away
     /// Defaults: Ctrl+Cmd+1=available, Ctrl+Cmd+2=tentative, Ctrl+Cmd+3=busy, Ctrl+Cmd+6=away
@@ -105,6 +291,7 @@ public struct AppConfiguration: Codable, Sendable {
         case showMenuBarText = "app.show_menu_bar_text"
         case manualOverrideTimeoutMinutes = "app.manual_override_timeout"
         case stateStabilizationSeconds = "app.state_stabilization"
+        case officeHours = "app.office_hours"
         case hotkeyBindings = "app.hotkey_bindings"
         case meetingDetectionEnabled = "app.meeting_detection_enabled"
         case meetingProviderZoomEnabled = "app.meeting_provider_zoom_enabled"

@@ -13,7 +13,8 @@ public struct StateTransition: Sendable {
         mode: OperatingMode
     ) -> (allowed: Bool, reason: String?) {
         
-        // In off mode, ignore everything except manual/startup sources (which re-enable the system)
+        // In off mode, ignore everything except manual/startup/office-hours sources
+        // (which can re-enable the system)
         if mode == .off {
             if newSource == .calendar || newSource == .system || newSource == .meeting {
                 return (false, "system-is-off")
@@ -25,7 +26,7 @@ public struct StateTransition: Sendable {
             return (true, nil)
         }
 
-        // In manual mode, only manual or system sources can change state
+        // In manual mode, only manual, office-hours, or system sources can change state
         if mode == .manual {
             if newSource == .calendar || newSource == .meeting {
                 return (false, "manual-override-active")
@@ -65,6 +66,8 @@ public struct StateTransition: Sendable {
             return .manual // Mode-change events maintain manual source context
         case .turnOff:
             return .startup
+        case .officeHoursChanged:
+            return .officeHours
         }
     }
 
@@ -94,6 +97,8 @@ public struct StateTransition: Sendable {
             return nil // These events trigger mode changes, not direct state changes
         case .turnOff:
             return .off
+        case .officeHoursChanged(let isWithinOfficeHours):
+            return isWithinOfficeHours ? nil : .off
         }
     }
 }

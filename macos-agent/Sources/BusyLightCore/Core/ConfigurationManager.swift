@@ -86,6 +86,10 @@ public class ConfigurationManager {
         }
         
         configuration.stateStabilizationSeconds = userDefaults.integer(forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
+        if let officeHoursData = userDefaults.data(forKey: AppConfiguration.CodingKeys.officeHours.rawValue),
+           let officeHours = try? JSONDecoder().decode(OfficeHoursConfiguration.self, from: officeHoursData) {
+            configuration.officeHours = officeHours
+        }
 
         // Load meeting detection settings
         if userDefaults.object(forKey: AppConfiguration.CodingKeys.meetingDetectionEnabled.rawValue) != nil {
@@ -170,6 +174,9 @@ public class ConfigurationManager {
         let timeoutValue = configuration.manualOverrideTimeoutMinutes ?? -1
         userDefaults.set(timeoutValue, forKey: AppConfiguration.CodingKeys.manualOverrideTimeoutMinutes.rawValue)
         userDefaults.set(configuration.stateStabilizationSeconds, forKey: AppConfiguration.CodingKeys.stateStabilizationSeconds.rawValue)
+        if let officeHoursData = try? JSONEncoder().encode(configuration.officeHours) {
+            userDefaults.set(officeHoursData, forKey: AppConfiguration.CodingKeys.officeHours.rawValue)
+        }
         
         // Save hotkey bindings
         let bindingsDict = configuration.hotkeyBindings.mapValues { NSNumber(value: $0) }
@@ -372,6 +379,51 @@ public class ConfigurationManager {
     
     public func setStateStabilizationSeconds(_ seconds: Int) {
         configuration.stateStabilizationSeconds = seconds
+        saveConfiguration()
+    }
+
+    public func getOfficeHoursEnabled() -> Bool {
+        return configuration.officeHours.isEnabled
+    }
+
+    public func setOfficeHoursEnabled(_ enabled: Bool) {
+        configuration.officeHours.isEnabled = enabled
+        saveConfiguration()
+    }
+
+    public func getOfficeHoursStartMinuteOfDay() -> Int {
+        return configuration.officeHours.startMinuteOfDay
+    }
+
+    public func setOfficeHoursStartMinuteOfDay(_ minuteOfDay: Int) {
+        configuration.officeHours.startMinuteOfDay = OfficeHoursConfiguration.normalizedMinute(minuteOfDay)
+        saveConfiguration()
+    }
+
+    public func getOfficeHoursEndMinuteOfDay() -> Int {
+        return configuration.officeHours.endMinuteOfDay
+    }
+
+    public func setOfficeHoursEndMinuteOfDay(_ minuteOfDay: Int) {
+        configuration.officeHours.endMinuteOfDay = OfficeHoursConfiguration.normalizedMinute(minuteOfDay)
+        saveConfiguration()
+    }
+
+    public func getOfficeHoursActiveWeekdays() -> Set<Int> {
+        return configuration.officeHours.activeWeekdays
+    }
+
+    public func setOfficeHoursActiveWeekdays(_ weekdays: Set<Int>) {
+        configuration.officeHours.activeWeekdays = OfficeHoursConfiguration.normalizedWeekdays(weekdays)
+        saveConfiguration()
+    }
+
+    public func getOfficeHoursConfiguration() -> OfficeHoursConfiguration {
+        return configuration.officeHours
+    }
+
+    public func setOfficeHoursConfiguration(_ officeHours: OfficeHoursConfiguration) {
+        configuration.officeHours = officeHours
         saveConfiguration()
     }
     

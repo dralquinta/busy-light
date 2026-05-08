@@ -1,6 +1,7 @@
 import AppKit
 import BusyLightCore
 import ApplicationServices
+import Network
 
 /// Application delegate managing the macOS menu bar presence agent lifecycle.
 @MainActor
@@ -12,6 +13,9 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
     private var stateMachine: PresenceStateMachine?
     private var networkClient: NetworkClient?
     private var meetingEngine: MeetingDetectionEngine?
+    private var officeHoursTask: Task<Void, Never>?
+    private var networkPathMonitor: NWPathMonitor?
+    private let networkPathQueue = DispatchQueue(label: "com.busylight.agent.network-path")
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         lifecycleLogger.logEvent("Application launched")
@@ -40,6 +44,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         // Wire state machine callbacks to UI
         machine.onStateChanged = { [weak controller, weak self, weak machine] state, source, reason in
             controller?.updatePresenceState(state, source: source, reason: reason, mode: machine?.currentMode ?? .auto)
+            controller?.updateSignalFeedback(.sending(state))
 
             // Update calendar status label when calendar or startup drives state.
             // Skip .off — that label is already set by updateModeDisplay(.off).
@@ -54,8 +59,12 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             }
             
             // Send state to WLED devices
-            Task {
-                await self?.networkClient?.sendState(state)
+            Task { [weak controller, weak self] in
+                guard let self else { return }
+                let result = await self.networkClient?.sendState(state)
+                    ?? WLEDStateSendResult(state: state, deliveredCount: 0, totalCount: 0)
+                let feedback = self.signalFeedback(for: result)
+                controller?.updateSignalFeedback(feedback)
             }
         }
         
@@ -116,6 +125,10 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             Task {
                 await self?.networkClient?.applyDeviceHostOverride(address)
             }
+        }
+
+        controller.onOfficeHoursChanged = { [weak self, weak machine] in
+            self?.evaluateOfficeHours(for: machine)
         }
         
         controller.onGetCalendarList = { [weak engine] in
@@ -254,9 +267,10 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         }
         
         // Connect to WLED devices and start health monitoring
-        Task {
+        Task { [weak self] in
             await client.connect()
             client.startHealthMonitoring()
+            self?.startNetworkPathMonitoring(client: client)
             lifecycleLogger.logEvent("Network client initialized and connected")
         }
         
@@ -270,6 +284,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         
         // Initialize state machine
         machine.handleEvent(.startupInitialize)
+        startOfficeHoursMonitoring(for: machine)
 
         // Defer the global-hotkey permission prompt so it cannot block WLED
         // discovery and the first state send during launch.
@@ -291,6 +306,8 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         hotkeyManager?.stop()
         calendarEngine?.stop()
         meetingEngine?.stop()
+        officeHoursTask?.cancel()
+        networkPathMonitor?.cancel()
         networkClient?.stopHealthMonitoring()
         networkClient?.disconnect()
         lifecycleLogger.logEvent("Monitors stopped")
@@ -309,6 +326,56 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         guard let address = address, !address.isEmpty else { return .unknown }
         guard let device = devices.first(where: { $0.address == address }) else { return .unknown }
         return device.isOnline ? .online : .offline
+    }
+
+    private func signalFeedback(for result: WLEDStateSendResult) -> SignalFeedback {
+        if result.didDeliverToEveryDevice {
+            return .sent(
+                state: result.state,
+                deliveredCount: result.deliveredCount,
+                totalCount: result.totalCount,
+                date: Date()
+            )
+        }
+
+        return .failed(
+            state: result.state,
+            deliveredCount: result.deliveredCount,
+            totalCount: result.totalCount,
+            date: Date()
+        )
+    }
+
+    private func startOfficeHoursMonitoring(for machine: PresenceStateMachine) {
+        officeHoursTask?.cancel()
+        officeHoursTask = Task { @MainActor [weak self, weak machine] in
+            while !Task.isCancelled {
+                self?.evaluateOfficeHours(for: machine)
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
+    private func evaluateOfficeHours(for machine: PresenceStateMachine?) {
+        let officeHours = ConfigurationManager.shared.getOfficeHoursConfiguration()
+        machine?.handleEvent(.officeHoursChanged(
+            isWithinOfficeHours: officeHours.contains(Date())
+        ))
+    }
+
+    private func startNetworkPathMonitoring(client: NetworkClient) {
+        guard networkPathMonitor == nil else { return }
+
+        let monitor = NWPathMonitor()
+        networkPathMonitor = monitor
+        monitor.pathUpdateHandler = { [weak client] path in
+            guard path.status == .satisfied else { return }
+
+            Task { @MainActor [weak client] in
+                await client?.handleNetworkPathAvailable()
+            }
+        }
+        monitor.start(queue: networkPathQueue)
     }
     
     /// Converts a Carbon virtual key code to a human-readable function key name.
