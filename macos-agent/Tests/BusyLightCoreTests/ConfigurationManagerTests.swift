@@ -20,4 +20,33 @@ final class ConfigurationManagerTests: XCTestCase {
         XCTAssertEqual(reloaded.getDeviceNetworkAddresses(), ["192.168.1.42"])
         XCTAssertEqual(reloaded.getDeviceNetworkAddress(), "192.168.1.42")
     }
+
+    func testDefaultWledHttpTimeoutAllowsSlowEsp32Responses() {
+        let suiteName = "BusyLightTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create UserDefaults suite")
+            return
+        }
+
+        userDefaults.removePersistentDomain(forName: suiteName)
+
+        let config = ConfigurationManager(userDefaults: userDefaults)
+
+        XCTAssertGreaterThanOrEqual(config.getWledHttpTimeout(), 2_500)
+    }
+
+    func testStoredLowWledHttpTimeoutMigratesToMinimum() {
+        let suiteName = "BusyLightTests.\(UUID().uuidString)"
+        guard let userDefaults = UserDefaults(suiteName: suiteName) else {
+            XCTFail("Failed to create UserDefaults suite")
+            return
+        }
+
+        userDefaults.removePersistentDomain(forName: suiteName)
+        userDefaults.set(500, forKey: AppConfiguration.CodingKeys.wledHttpTimeout.rawValue)
+
+        let config = ConfigurationManager(userDefaults: userDefaults)
+
+        XCTAssertEqual(config.getWledHttpTimeout(), AppConfiguration.minimumWledHttpTimeout)
+    }
 }

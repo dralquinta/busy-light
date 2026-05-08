@@ -115,8 +115,8 @@ defaults write com.busylight.agent app.wled_preset_away -int 4
 defaults write com.busylight.agent app.wled_preset_unknown -int 5
 defaults write com.busylight.agent app.wled_preset_off -int 6
 
-# HTTP timeout in milliseconds (default: 500)
-defaults write com.busylight.agent app.wled_http_timeout -int 500
+# HTTP timeout in milliseconds (default/minimum: 2500)
+defaults write com.busylight.agent app.wled_http_timeout -int 2500
 
 # Health check interval in seconds (default: 10)
 defaults write com.busylight.agent app.wled_health_check_interval -int 10

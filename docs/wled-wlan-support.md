@@ -18,7 +18,7 @@ This document provides comprehensive technical documentation for the WLED wirele
 - **Preset Mapping**: Six presence states mapped to WLED preset IDs (1-6)
 - **Robust Error Handling**: Exponential backoff retry logic, non-fatal failure handling
 - **Actor Isolation**: Swift 6 strict concurrency compliance with proper actor isolation
-- **Low Latency**: < 500ms default HTTP timeouts for responsive visual feedback
+- **Responsive Recovery**: 2500ms WLED HTTP timeout for ESP32 reliability, with shorter bounded probes for subnet scanning
 
 ## Architecture Overview
 
@@ -64,7 +64,7 @@ BusyLightApp (MainActor)
   - `wledPresetAway: Int = 4` (Blue)
   - `wledPresetUnknown: Int = 5` (White)
   - `wledPresetOff: Int = 6` (Off)
-- Added `httpRequestTimeout: TimeInterval = 0.5` (500ms)
+- Added `httpRequestTimeout: TimeInterval = 2.5` (2500ms)
 - Added `healthCheckInterval: TimeInterval = 10.0` (10 seconds)
 - Added `enableDeviceDiscovery: Bool = true` (Bonjour discovery flag)
 
@@ -74,7 +74,7 @@ BusyLightApp (MainActor)
 - Port 80 is WLED firmware default, eliminating need for custom configuration
 - Array of addresses supports multi-device setups (home office + bedroom, etc.)
 - Preset IDs 1-6 map to standard WLED preset slots
-- 500ms timeout balances responsiveness with network reliability
+- 2500ms timeout tolerates slower ESP32/WLED JSON responses while subnet scan probes remain bounded
 - 10-second health checks detect disconnections without excessive overhead
 
 #### 1.2 ConfigurationManager.swift

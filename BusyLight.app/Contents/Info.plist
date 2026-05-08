@@ -22,5 +22,16 @@
 	<string>BusyLight reads your calendar events to automatically detect when you are busy, tentative, or available and reflect that on your presence indicator light.</string>
 	<key>NSCalendarsUsageDescription</key>
 	<string>BusyLight reads your calendar to automatically set your availability status based on current events.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>BusyLight scans your local network and connects to your WLED presence light.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp.</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 </dict>
 </plist>
