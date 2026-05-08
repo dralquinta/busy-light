@@ -27,6 +27,9 @@ public enum StateEvent: Sendable {
     
     /// User requested to turn the system off (suspend calendar sync, light off)
     case turnOff
+
+    /// Office-hours scheduler detected whether automatic presence should be active
+    case officeHoursChanged(isWithinOfficeHours: Bool)
     
     /// Hotkey (F13–F20) triggered a manual state override
     case hotkeyPressed(PresenceState)

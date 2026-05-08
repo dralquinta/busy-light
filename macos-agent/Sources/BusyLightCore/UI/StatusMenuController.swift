@@ -1,5 +1,20 @@
 import AppKit
 
+public enum SignalFeedback: Equatable {
+    case sending(PresenceState)
+    case sent(state: PresenceState, deliveredCount: Int, totalCount: Int, date: Date)
+    case failed(state: PresenceState, deliveredCount: Int, totalCount: Int, date: Date)
+}
+
+private struct OfficeHoursEditorControls {
+    let view: NSView
+    let enabledButton: NSButton
+    let dayButtons: [(button: NSButton, weekday: Int)]
+    let fromPopup: NSPopUpButton
+    let toPopup: NSPopUpButton
+    let allDayButton: NSButton
+}
+
 /// Manages the menu bar status icon and dropdown menu.
 /// Isolated to @MainActor because all NSStatusBar and menu operations must run on the main thread.
 @MainActor
@@ -7,6 +22,8 @@ public class StatusMenuController {
     private let statusItem: NSStatusItem
     private let menu = NSMenu()
     private var statusText: NSMenuItem?
+    private var deviceSummaryItem: NSMenuItem?
+    private var signalFeedbackItem: NSMenuItem?
     private var modeMenuItem: NSMenuItem?
     private var autoModeItem: NSMenuItem?
     private var manualModeItem: NSMenuItem?
@@ -25,6 +42,14 @@ public class StatusMenuController {
 
     /// Current operating mode (auto = calendar-driven, manual = user override)
     private var currentMode: OperatingMode = .auto
+
+    private let deviceConfigurationSectionTitle = "Device Configuration"
+    private let officeHoursSectionTitle = "Office Hours"
+    private let officeHoursEditorSize = NSSize(width: 448, height: 118)
+    private let officeHoursDayOptions: [(label: String, weekday: Int)] = [
+        ("M", 2), ("T", 3), ("W", 4), ("T", 5), ("F", 6), ("S", 7), ("S", 1)
+    ]
+    private let officeHoursTimeControlLabels = ["from", "to", "All day"]
 
     /// Called when the user taps "Resume Calendar Control" so the app can
     /// trigger an immediate calendar rescan.
@@ -53,6 +78,9 @@ public class StatusMenuController {
 
     /// Called when the user configures a device address override.
     public var onConfigureDeviceAddress: (@MainActor (String) -> Void)?
+
+    /// Called when the user changes office-hours settings.
+    public var onOfficeHoursChanged: (@MainActor () -> Void)?
     
     /// Called when the user wants to select which calendars to monitor.
     /// Returns (availableCalendars, currentlyEnabledTitles)
@@ -100,22 +128,37 @@ public class StatusMenuController {
         // Status display (read-only)
         statusText = NSMenuItem(title: "Status: Available", action: nil, keyEquivalent: "")
         menu.addItem(statusText!)
+
+        deviceSummaryItem = NSMenuItem(title: "Devices: Searching (0 online)", action: nil, keyEquivalent: "")
+        menu.addItem(deviceSummaryItem!)
+
+        signalFeedbackItem = NSMenuItem(title: "Signal: Waiting", action: nil, keyEquivalent: "")
+        menu.addItem(signalFeedbackItem!)
         
         menu.addItem(NSMenuItem.separator())
 
-        // Mode selection
-        let modeMenu = NSMenu(title: "Mode")
+        // Status control
+        let controlMenu = NSMenu(title: "Control")
 
-        autoModeItem = NSMenuItem(title: "Automatic", action: #selector(selectAutoMode), keyEquivalent: "")
+        autoModeItem = NSMenuItem(title: "Automatic Calendar Control", action: #selector(selectAutoMode), keyEquivalent: "")
         autoModeItem?.target = self
-        modeMenu.addItem(autoModeItem!)
+        autoModeItem?.keyEquivalentModifierMask = [.command, .control]
+        autoModeItem?.keyEquivalent = "4"
+        controlMenu.addItem(autoModeItem!)
 
         manualModeItem = NSMenuItem(title: "Manual Override", action: #selector(selectManualMode), keyEquivalent: "")
         manualModeItem?.target = self
-        modeMenu.addItem(manualModeItem!)
+        controlMenu.addItem(manualModeItem!)
 
-        modeMenuItem = NSMenuItem(title: "Mode", action: nil, keyEquivalent: "")
-        modeMenuItem?.submenu = modeMenu
+        // Turn Off item — suspends all syncing, visible in auto/manual mode
+        turnOffMenuItem = NSMenuItem(title: "Turn Off BusyLight",
+                                     action: #selector(turnOffSystem),
+                                     keyEquivalent: "")
+        turnOffMenuItem?.target = self
+        controlMenu.addItem(turnOffMenuItem!)
+
+        modeMenuItem = NSMenuItem(title: "Control", action: nil, keyEquivalent: "")
+        modeMenuItem?.submenu = controlMenu
         menu.addItem(modeMenuItem!)
 
         // Manual override actions (shown only in manual mode)
@@ -136,35 +179,8 @@ public class StatusMenuController {
         manualOverrideMenuItem?.submenu = manualOverrideMenu
         manualOverrideMenuItem?.isHidden = true
         menu.addItem(manualOverrideMenuItem!)
-
-        // Turn Off item — suspends all syncing, visible in auto/manual mode
-        turnOffMenuItem = NSMenuItem(title: "Turn Off BusyLight",
-                                     action: #selector(turnOffSystem),
-                                     keyEquivalent: "")
-        turnOffMenuItem?.target = self
-        menu.addItem(turnOffMenuItem!)
-        
-        // Resume Calendar Control - useful when browser meeting tab is still open but meeting has ended
-        let resumeCalendarItem = NSMenuItem(title: "Resume Calendar Control",
-                                           action: #selector(resumeCalendar),
-                                           keyEquivalent: "")
-        resumeCalendarItem.target = self
-        resumeCalendarItem.keyEquivalentModifierMask = [.command, .control]
-        resumeCalendarItem.keyEquivalent = "4"
-        menu.addItem(resumeCalendarItem)
         
         menu.addItem(NSMenuItem.separator())
-        
-        // Device status
-        deviceStatusItem = NSMenuItem(title: "Device: Searching", action: nil, keyEquivalent: "")
-        menu.addItem(deviceStatusItem!)
-
-        // Device configuration (inline items)
-        deviceConnectedItem = NSMenuItem(title: "Connected to: Searching", action: nil, keyEquivalent: "")
-        menu.addItem(deviceConnectedItem!)
-
-        deviceLastSyncItem = NSMenuItem(title: "Last sync: Not yet", action: nil, keyEquivalent: "")
-        menu.addItem(deviceLastSyncItem!)
 
         // Calendar engine status
         calendarStatusItem = NSMenuItem(title: "Calendar: Starting…", action: nil, keyEquivalent: "")
@@ -264,8 +280,39 @@ public class StatusMenuController {
         calendarMenuItem?.submenu = calendarMenu
         menu.addItem(calendarMenuItem!)
         
-        settingsItem = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
-        settingsItem?.target = self
+        let settingsMenu = NSMenu(title: "Settings")
+
+        let devicesMenu = NSMenu(title: "Devices")
+        deviceStatusItem = NSMenuItem(title: "Device: Searching", action: nil, keyEquivalent: "")
+        devicesMenu.addItem(deviceStatusItem!)
+
+        deviceConnectedItem = NSMenuItem(title: "Connected to: Searching", action: nil, keyEquivalent: "")
+        devicesMenu.addItem(deviceConnectedItem!)
+
+        deviceLastSyncItem = NSMenuItem(title: "Last sync: Not yet", action: nil, keyEquivalent: "")
+        devicesMenu.addItem(deviceLastSyncItem!)
+
+        devicesMenu.addItem(NSMenuItem.separator())
+
+        let configureDevicesItem = NSMenuItem(title: "Configure Devices...", action: #selector(openSettings), keyEquivalent: "")
+        configureDevicesItem.target = self
+        devicesMenu.addItem(configureDevicesItem)
+
+        let devicesItem = NSMenuItem(title: "Devices", action: nil, keyEquivalent: "")
+        devicesItem.submenu = devicesMenu
+        settingsMenu.addItem(devicesItem)
+        settingsMenu.addItem(NSMenuItem.separator())
+
+        let officeHoursItem = NSMenuItem(title: "Office Hours...", action: #selector(openOfficeHoursSettings), keyEquivalent: "")
+        officeHoursItem.target = self
+        settingsMenu.addItem(officeHoursItem)
+
+        let preferencesItem = NSMenuItem(title: "Preferences…", action: #selector(openSettings), keyEquivalent: ",")
+        preferencesItem.target = self
+        settingsMenu.addItem(preferencesItem)
+
+        settingsItem = NSMenuItem(title: "Settings", action: nil, keyEquivalent: "")
+        settingsItem?.submenu = settingsMenu
         menu.addItem(settingsItem!)
         
         // Quit
@@ -310,6 +357,8 @@ public class StatusMenuController {
                 }
             case .system:
                 statusDetail = " (System)"
+            case .officeHours:
+                statusDetail = " (Office Hours)"
             case .startup:
                 statusDetail = " (Automatic)"
             case .manual:
@@ -333,6 +382,17 @@ public class StatusMenuController {
             "reason": reason.rawValue,
             "mode": mode.rawValue
         ])
+    }
+
+    public func updateSignalFeedback(_ feedback: SignalFeedback) {
+        switch feedback {
+        case .sending(let state):
+            signalFeedbackItem?.title = "Signal: Sending \(state.displayName)..."
+        case .sent(let state, let deliveredCount, let totalCount, _):
+            signalFeedbackItem?.title = "Signal: Sent \(state.displayName) (\(deliveredCount)/\(totalCount))"
+        case .failed(let state, let deliveredCount, let totalCount, _):
+            signalFeedbackItem?.title = "Signal: Failed \(state.displayName) (\(deliveredCount)/\(totalCount))"
+        }
     }
     
     // Legacy method for compatibility
@@ -434,6 +494,7 @@ public class StatusMenuController {
         }
         
         deviceStatusItem?.title = statusText
+        deviceSummaryItem?.title = deviceSummaryTitle(onlineCount: onlineCount)
         deviceLastSyncItem?.title = "Last sync: \(formatLastSync(from: onlineDevices))"
         
         // Build tooltip with individual device details
@@ -467,6 +528,7 @@ public class StatusMenuController {
 
         if address == nil || address?.isEmpty == true {
             deviceStatusItem?.title = "Device: Searching"
+            deviceSummaryItem?.title = deviceSummaryTitle(onlineCount: 0)
             deviceLastSyncItem?.title = "Last sync: Not yet"
         }
 
@@ -586,6 +648,8 @@ public class StatusMenuController {
         stack.alignment = .leading
         stack.spacing = 8
 
+        stack.addArrangedSubview(sectionHeader(title: deviceConfigurationSectionTitle))
+
         let addressField = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         addressField.stringValue = ConfigurationManager.shared.getDeviceNetworkAddresses().first ?? ""
         stack.addArrangedSubview(labeledRow(label: "WLED Host (IPv4)", field: addressField))
@@ -601,6 +665,13 @@ public class StatusMenuController {
 
         let awayField = labeledNumericField(value: ConfigurationManager.shared.getWledPresetAway())
         stack.addArrangedSubview(labeledRow(label: "Preset: Away", field: awayField))
+
+        stack.addArrangedSubview(sectionDivider())
+        stack.addArrangedSubview(sectionHeader(title: officeHoursSectionTitle))
+
+        let officeHours = ConfigurationManager.shared.getOfficeHoursConfiguration()
+        let officeHoursEditor = makeOfficeHoursEditor(configuration: officeHours)
+        stack.addArrangedSubview(officeHoursEditor.view)
 
         alert.accessoryView = stack
         alert.window.initialFirstResponder = addressField
@@ -638,6 +709,41 @@ public class StatusMenuController {
         if let away = Int(awayField.stringValue) {
             ConfigurationManager.shared.setWledPresetAway(away)
         }
+
+        guard let updatedOfficeHours = officeHoursConfiguration(from: officeHoursEditor) else {
+            showInvalidOfficeHoursAlert()
+            return
+        }
+
+        ConfigurationManager.shared.setOfficeHoursConfiguration(updatedOfficeHours)
+        onOfficeHoursChanged?()
+    }
+
+    @objc private func openOfficeHoursSettings() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Office Hours"
+        alert.informativeText = "Outside office hours, BusyLight turns the light off unless you send a manual override."
+        alert.alertStyle = .informational
+
+        let officeHours = ConfigurationManager.shared.getOfficeHoursConfiguration()
+        let officeHoursEditor = makeOfficeHoursEditor(configuration: officeHours)
+
+        alert.accessoryView = officeHoursEditor.view
+        alert.window.initialFirstResponder = officeHoursEditor.fromPopup
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        guard let updatedOfficeHours = officeHoursConfiguration(from: officeHoursEditor) else {
+            showInvalidOfficeHoursAlert()
+            return
+        }
+
+        ConfigurationManager.shared.setOfficeHoursConfiguration(updatedOfficeHours)
+        onOfficeHoursChanged?()
     }
 
 
@@ -797,10 +903,146 @@ public class StatusMenuController {
         return formatter.string(from: lastSeen)
     }
 
+    private func deviceSummaryTitle(onlineCount: Int) -> String {
+        let status = onlineCount > 0 ? "Online" : "Searching"
+        return "Devices: \(status) (\(onlineCount) online)"
+    }
+
+    private var officeHoursTimeOptions: [(label: String, minute: Int)] {
+        return stride(from: 0, to: 24 * 60, by: 30).map { minute in
+            (displayTimeLabel(for: minute), minute)
+        }
+    }
+
+    private func makeOfficeHoursEditor(configuration officeHours: OfficeHoursConfiguration) -> OfficeHoursEditorControls {
+        let container = NSView(frame: NSRect(origin: .zero, size: officeHoursEditorSize))
+        container.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalToConstant: officeHoursEditorSize.width),
+            container.heightAnchor.constraint(equalToConstant: officeHoursEditorSize.height),
+        ])
+
+        let enabledButton = NSButton(checkboxWithTitle: "On", target: nil, action: nil)
+        enabledButton.frame = NSRect(x: 0, y: 82, width: 62, height: 24)
+        enabledButton.state = officeHours.isEnabled ? .on : .off
+        container.addSubview(enabledButton)
+
+        var dayButtons: [(button: NSButton, weekday: Int)] = []
+        for (index, option) in officeHoursDayOptions.enumerated() {
+            let button = NSButton(title: option.label, target: nil, action: nil)
+            button.setButtonType(.pushOnPushOff)
+            button.bezelStyle = .rounded
+            button.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+            button.frame = NSRect(x: 70 + (index * 38), y: 79, width: 32, height: 30)
+            button.state = officeHours.activeWeekdays.contains(option.weekday) ? .on : .off
+            container.addSubview(button)
+            dayButtons.append((button, option.weekday))
+        }
+
+        let fromLabel = NSTextField(labelWithString: officeHoursTimeControlLabels[0])
+        fromLabel.frame = NSRect(x: 0, y: 42, width: 38, height: 22)
+        container.addSubview(fromLabel)
+
+        let fromPopup = makeOfficeHoursTimePopup(selectedMinute: officeHours.startMinuteOfDay)
+        fromPopup.frame = NSRect(x: 44, y: 38, width: 116, height: 28)
+        container.addSubview(fromPopup)
+
+        let toLabel = NSTextField(labelWithString: officeHoursTimeControlLabels[1])
+        toLabel.frame = NSRect(x: 176, y: 42, width: 20, height: 22)
+        container.addSubview(toLabel)
+
+        let toPopup = makeOfficeHoursTimePopup(selectedMinute: officeHours.endMinuteOfDay)
+        toPopup.frame = NSRect(x: 202, y: 38, width: 116, height: 28)
+        container.addSubview(toPopup)
+
+        let allDayButton = NSButton(checkboxWithTitle: officeHoursTimeControlLabels[2], target: nil, action: nil)
+        allDayButton.frame = NSRect(x: 334, y: 40, width: 92, height: 24)
+        allDayButton.state = officeHours.startMinuteOfDay == officeHours.endMinuteOfDay ? .on : .off
+        container.addSubview(allDayButton)
+
+        return OfficeHoursEditorControls(
+            view: container,
+            enabledButton: enabledButton,
+            dayButtons: dayButtons,
+            fromPopup: fromPopup,
+            toPopup: toPopup,
+            allDayButton: allDayButton
+        )
+    }
+
+    private func makeOfficeHoursTimePopup(selectedMinute: Int) -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        for option in officeHoursTimeOptions {
+            popup.addItem(withTitle: option.label)
+            popup.lastItem?.tag = option.minute
+        }
+
+        selectOfficeHoursTime(closestOfficeHoursTimeOption(to: selectedMinute), in: popup)
+        return popup
+    }
+
+    private func officeHoursConfiguration(from editor: OfficeHoursEditorControls) -> OfficeHoursConfiguration? {
+        let activeWeekdays = Set(editor.dayButtons.compactMap { item in
+            item.button.state == .on ? item.weekday : nil
+        })
+        guard !activeWeekdays.isEmpty else { return nil }
+
+        let isAllDay = editor.allDayButton.state == .on
+        let startMinute = isAllDay ? 0 : selectedOfficeHoursTime(from: editor.fromPopup)
+        let endMinute = isAllDay ? 0 : selectedOfficeHoursTime(from: editor.toPopup)
+
+        return OfficeHoursConfiguration(
+            isEnabled: editor.enabledButton.state == .on,
+            startMinuteOfDay: startMinute,
+            endMinuteOfDay: endMinute,
+            activeWeekdays: activeWeekdays
+        )
+    }
+
+    private func selectedOfficeHoursTime(from popup: NSPopUpButton) -> Int {
+        return OfficeHoursConfiguration.normalizedMinute(popup.selectedItem?.tag ?? 0)
+    }
+
+    private func selectOfficeHoursTime(_ minute: Int, in popup: NSPopUpButton) {
+        guard let item = popup.itemArray.first(where: { $0.tag == minute }) else {
+            popup.selectItem(at: 0)
+            return
+        }
+
+        popup.select(item)
+    }
+
+    private func closestOfficeHoursTimeOption(to minute: Int) -> Int {
+        let normalized = OfficeHoursConfiguration.normalizedMinute(minute)
+        let rounded = ((normalized + 15) / 30) * 30
+        return min(rounded, (23 * 60) + 30)
+    }
+
+    private func displayTimeLabel(for minute: Int) -> String {
+        let hour = minute / 60
+        let minutePart = minute % 60
+        let suffix = hour < 12 ? "AM" : "PM"
+        let hourPart = hour % 12 == 0 ? 12 : hour % 12
+        return String(format: "%d:%02d %@", hourPart, minutePart, suffix)
+    }
+
     private func labeledNumericField(value: Int) -> NSTextField {
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.stringValue = String(value)
         return field
+    }
+
+    private func sectionHeader(title: String) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.font = NSFont.boldSystemFont(ofSize: 12)
+        label.alignment = .left
+        return label
+    }
+
+    private func sectionDivider() -> NSBox {
+        let divider = NSBox()
+        divider.boxType = .separator
+        return divider
     }
 
     private func labeledRow(label: String, field: NSTextField) -> NSView {
@@ -838,4 +1080,63 @@ public class StatusMenuController {
         alert.addButton(withTitle: "OK")
         alert.runModal()
     }
+
+    private func showInvalidOfficeHoursAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Invalid Office Hours"
+        alert.informativeText = "Select at least one weekday."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    #if DEBUG
+    func menuTitlesForTesting(path: [String] = []) -> [String] {
+        guard let menu = menuForTesting(at: path) else { return [] }
+        return menu.items
+            .filter { !$0.isSeparatorItem }
+            .map(\.title)
+    }
+
+    func keyEquivalentForTesting(path: [String]) -> String? {
+        guard let item = menuItemForTesting(at: path) else { return nil }
+        return item.keyEquivalent
+    }
+
+    func settingsSectionTitlesForTesting() -> [String] {
+        return [deviceConfigurationSectionTitle, officeHoursSectionTitle]
+    }
+
+    func officeHoursDayLabelsForTesting() -> [String] {
+        return officeHoursDayOptions.map(\.label)
+    }
+
+    func officeHoursTimeControlLabelsForTesting() -> [String] {
+        return officeHoursTimeControlLabels
+    }
+
+    func officeHoursTimeOptionsForTesting() -> [String] {
+        return officeHoursTimeOptions.map(\.label)
+    }
+
+    func officeHoursEditorSizeForTesting() -> NSSize {
+        return officeHoursEditorSize
+    }
+
+    private func menuForTesting(at path: [String]) -> NSMenu? {
+        guard let firstTitle = path.first else { return menu }
+        guard let item = menu.items.first(where: { $0.title == firstTitle }) else { return nil }
+
+        return path.dropFirst().reduce(item.submenu) { currentMenu, title in
+            guard let currentMenu else { return nil }
+            return currentMenu.items.first(where: { $0.title == title })?.submenu
+        }
+    }
+
+    private func menuItemForTesting(at path: [String]) -> NSMenuItem? {
+        guard let itemTitle = path.last else { return nil }
+        let parentPath = Array(path.dropLast())
+        return menuForTesting(at: parentPath)?.items.first(where: { $0.title == itemTitle })
+    }
+    #endif
 }

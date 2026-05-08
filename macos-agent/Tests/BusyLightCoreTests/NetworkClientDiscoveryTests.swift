@@ -266,6 +266,91 @@ final class NetworkClientDiscoveryTests: XCTestCase {
         XCTAssertEqual(client.devices.map(\.address), ["192.168.86.33"])
     }
 
+    func testRefreshInvokesReconnectHookWhenScanFindsDeviceAfterLoss() async {
+        let (config, userDefaults, suiteName) = makeConfiguration()
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        config.setWledEnableDiscovery(true)
+
+        let initialDevice = WLEDDevice(
+            id: "actual-device",
+            address: "192.168.86.33",
+            port: 80,
+            name: "BusyLight",
+            isOnline: true
+        )
+        let rejoinedDevice = WLEDDevice(
+            id: "actual-device",
+            address: "192.168.86.44",
+            port: 80,
+            name: "BusyLight",
+            isOnline: true
+        )
+        let scanner = SequenceNetworkScanner(deviceBatches: [
+            [initialDevice],
+            [],
+            [rejoinedDevice]
+        ])
+        let httpClient = RecordingHTTPClient(
+            offlineInfoAddresses: ["192.168.86.33"],
+            offlinePostAddresses: ["192.168.86.33"]
+        )
+        let client = NetworkClient(
+            config: config,
+            httpClient: httpClient,
+            discovery: StubDeviceDiscovery(devices: []),
+            networkScanner: scanner
+        )
+
+        await client.connect()
+        XCTAssertEqual(client.devices.map(\.address), ["192.168.86.33"])
+
+        var reconnectCount = 0
+        client.onDeviceReconnected = {
+            reconnectCount += 1
+        }
+
+        await client.sendState(.busy)
+        XCTAssertTrue(client.devices.isEmpty)
+
+        await client.refreshDevices()
+
+        XCTAssertEqual(client.devices.map(\.address), ["192.168.86.44"])
+        XCTAssertEqual(reconnectCount, 1)
+    }
+
+    func testNetworkPathAvailableRevalidatesAndRequestsResendForKnownOnlineDevice() async {
+        let (config, userDefaults, suiteName) = makeConfiguration()
+        defer { userDefaults.removePersistentDomain(forName: suiteName) }
+        config.setWledEnableDiscovery(true)
+
+        let device = WLEDDevice(
+            id: "actual-device",
+            address: "192.168.86.33",
+            port: 80,
+            name: "BusyLight",
+            isOnline: true
+        )
+        let scanner = StubNetworkScanner(devices: [device])
+        let client = NetworkClient(
+            config: config,
+            httpClient: RecordingHTTPClient(),
+            discovery: StubDeviceDiscovery(devices: []),
+            networkScanner: scanner
+        )
+
+        await client.connect()
+
+        var reconnectCount = 0
+        client.onDeviceReconnected = {
+            reconnectCount += 1
+        }
+
+        await client.handleNetworkPathAvailable()
+
+        XCTAssertEqual(await scanner.scanCallCount, 1)
+        XCTAssertEqual(client.devices.map(\.address), ["192.168.86.33"])
+        XCTAssertEqual(reconnectCount, 1)
+    }
 
     private func makeConfiguration() -> (ConfigurationManager, UserDefaults, String) {
         let suiteName = "BusyLightNetworkClientTests.\(UUID().uuidString)"
@@ -276,6 +361,24 @@ final class NetworkClientDiscoveryTests: XCTestCase {
 
         userDefaults.removePersistentDomain(forName: suiteName)
         return (ConfigurationManager(userDefaults: userDefaults), userDefaults, suiteName)
+    }
+}
+
+private actor SequenceNetworkScanner: WLEDDeviceScanning {
+    private var deviceBatches: [[WLEDDevice]]
+    private(set) var scanCallCount = 0
+
+    init(deviceBatches: [[WLEDDevice]]) {
+        self.deviceBatches = deviceBatches
+    }
+
+    func scanForDevices(port: Int, timeout: TimeInterval, priorityAddresses: [String]) async -> [WLEDDevice] {
+        scanCallCount += 1
+        guard !deviceBatches.isEmpty else {
+            return []
+        }
+
+        return deviceBatches.removeFirst()
     }
 }
 
@@ -322,9 +425,14 @@ private actor RecordingHTTPClient: WLEDHTTPClient {
 
     private var posts: [RecordedPost] = []
     private let offlineInfoAddresses: Set<String>
+    private let offlinePostAddresses: Set<String>
 
-    init(offlineInfoAddresses: Set<String> = []) {
+    init(
+        offlineInfoAddresses: Set<String> = [],
+        offlinePostAddresses: Set<String> = []
+    ) {
         self.offlineInfoAddresses = offlineInfoAddresses
+        self.offlinePostAddresses = offlinePostAddresses
     }
 
     func postState(
@@ -332,6 +440,10 @@ private actor RecordingHTTPClient: WLEDHTTPClient {
         port: Int,
         request: WLEDStateRequest
     ) async throws -> WLEDStateResponse {
+        if offlinePostAddresses.contains(address) {
+            throw NetworkError.deviceUnavailable
+        }
+
         posts.append(RecordedPost(address: address, port: port, presetId: request.ps))
         return WLEDStateResponse(on: true, bri: 128, ps: request.ps)
     }

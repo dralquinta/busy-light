@@ -1,5 +1,21 @@
 import Foundation
 
+public struct WLEDStateSendResult: Equatable, Sendable {
+    public let state: PresenceState
+    public let deliveredCount: Int
+    public let totalCount: Int
+
+    public var didDeliverToEveryDevice: Bool {
+        return totalCount > 0 && deliveredCount == totalCount
+    }
+
+    public init(state: PresenceState, deliveredCount: Int, totalCount: Int) {
+        self.state = state
+        self.deliveredCount = deliveredCount
+        self.totalCount = totalCount
+    }
+}
+
 /// Main network client for communicating with WLED devices.
 /// Handles device discovery, preset broadcasting, and health monitoring.
 @MainActor
@@ -17,6 +33,7 @@ public final class NetworkClient {
     private var connectTask: Task<Void, Never>?
     private var isHealthCheckRunning = false
     private var lastReconnectAttempt: Date = .distantPast
+    private var hasSeenOnlineDevice = false
 
     /// Minimum seconds between background re-discovery attempts when no online devices are known.
     private let reconnectIntervalSeconds: TimeInterval = 5.0
@@ -73,6 +90,8 @@ public final class NetworkClient {
         
         var allDevices: [WLEDDevice] = []
         let port = config.getDeviceNetworkPort()
+        let hadOnlineDevicesBeforeConnect = !devices.isEmpty
+        let hadSeenOnlineDeviceBeforeConnect = hasSeenOnlineDevice
         
         let configuredAddresses = configuredDeviceAddresses()
         if !configuredAddresses.isEmpty {
@@ -115,7 +134,21 @@ public final class NetworkClient {
             persistDiscoveredDeviceAddresses(allDevices)
         }
         
-        devices = allDevices.filter(\.isOnline)
+        var onlineDevices = allDevices.filter(\.isOnline)
+        let didReconnectAfterLoss = !hadOnlineDevicesBeforeConnect
+            && hadSeenOnlineDeviceBeforeConnect
+            && !onlineDevices.isEmpty
+
+        if didReconnectAfterLoss {
+            for index in onlineDevices.indices {
+                onlineDevices[index].lastPresetSent = nil
+            }
+        }
+
+        devices = onlineDevices
+        if !devices.isEmpty {
+            hasSeenOnlineDevice = true
+        }
         
         networkLogger.logEvent("network_client.connect.completed", details: [
             "total_devices": String(devices.count)
@@ -123,6 +156,11 @@ public final class NetworkClient {
         
         // Notify observers
         onDeviceStatusChanged?(devices)
+
+        if didReconnectAfterLoss {
+            networkLogger.logEvent("network_client.connect.reconnect_detected")
+            onDeviceReconnected?()
+        }
     }
     
     /// Refreshes device list by re-running discovery.
@@ -136,6 +174,7 @@ public final class NetworkClient {
         networkLogger.logEvent("network_client.disconnect")
         stopHealthMonitoring()
         devices.removeAll()
+        hasSeenOnlineDevice = false
     }
 
     /// Applies a manual device address override and reconnects immediately.
@@ -150,6 +189,7 @@ public final class NetworkClient {
         stopHealthMonitoring()
         await httpClient.cancelAllRequests()
         devices.removeAll()
+        hasSeenOnlineDevice = false
 
         await connect()
         startHealthMonitoring()
@@ -160,11 +200,12 @@ public final class NetworkClient {
     /// Sends presence state to all configured devices by activating corresponding preset.
     /// Broadcasts to all devices in parallel using TaskGroup.
     /// - Parameter state: Presence state to broadcast
-    public func sendState(_ state: PresenceState) async {
-        await sendState(state, allowRecovery: true)
+    @discardableResult
+    public func sendState(_ state: PresenceState) async -> WLEDStateSendResult {
+        return await sendState(state, allowRecovery: true)
     }
 
-    private func sendState(_ state: PresenceState, allowRecovery: Bool) async {
+    private func sendState(_ state: PresenceState, allowRecovery: Bool) async -> WLEDStateSendResult {
         let presetId = config.getWledPreset(for: state)
         
         networkLogger.logEvent("network_client.send_state", details: [
@@ -179,8 +220,11 @@ public final class NetworkClient {
 
         guard !devices.isEmpty else {
             networkLogger.logEvent("network_client.send_state.no_online_devices")
-            return
+            return WLEDStateSendResult(state: state, deliveredCount: 0, totalCount: 0)
         }
+
+        let totalDeviceCount = devices.count
+        var deliveredCount = 0
         
         // Broadcast to all devices in parallel
         await withTaskGroup(of: (Int, Bool, WLEDDevice).self) { group in
@@ -201,6 +245,7 @@ public final class NetworkClient {
                 if index < updatedDevices.count {
                     updatedDevices[index].isOnline = success
                     if success {
+                        deliveredCount += 1
                         updatedDevices[index].lastSeen = Date()
                         updatedDevices[index].lastPresetSent = presetId
                     }
@@ -216,9 +261,15 @@ public final class NetworkClient {
         if devices.isEmpty && allowRecovery {
             let recovered = await recoverDevices(reason: "send_all_devices_failed", force: true)
             if recovered {
-                await sendState(state, allowRecovery: false)
+                return await sendState(state, allowRecovery: false)
             }
         }
+
+        return WLEDStateSendResult(
+            state: state,
+            deliveredCount: deliveredCount,
+            totalCount: totalDeviceCount
+        )
     }
     
     /// Sends preset to a single device with deduplication.
@@ -305,6 +356,29 @@ public final class NetworkClient {
         healthCheckTask?.cancel()
         healthCheckTask = nil
     }
+
+    /// Called when the host network path becomes available again.
+    /// Revalidates devices and asks the app to resend the current state when a prior device is online.
+    public func handleNetworkPathAvailable() async {
+        let hadOnlineDevicesBeforePathUpdate = !devices.isEmpty
+        let hadSeenOnlineDeviceBeforePathUpdate = hasSeenOnlineDevice
+
+        networkLogger.logEvent("network_client.path.available")
+        await connect()
+
+        guard hadSeenOnlineDeviceBeforePathUpdate,
+              hadOnlineDevicesBeforePathUpdate,
+              !devices.isEmpty else {
+            return
+        }
+
+        for index in devices.indices {
+            devices[index].lastPresetSent = nil
+        }
+
+        networkLogger.logEvent("network_client.path.resend_requested")
+        onDeviceReconnected?()
+    }
     
     /// Performs health check on all devices.
     private func performHealthCheck() async {
@@ -314,10 +388,7 @@ public final class NetworkClient {
 
         // If no online devices are known yet, attempt periodic re-discovery (rate-limited).
         if devices.isEmpty {
-            let recovered = await recoverDevices(reason: "health_no_online_devices", force: false)
-            if recovered {
-                onDeviceReconnected?()
-            }
+            _ = await recoverDevices(reason: "health_no_online_devices", force: false)
             return
         }
 
@@ -380,10 +451,7 @@ public final class NetworkClient {
         }
 
         if devices.isEmpty {
-            let recovered = await recoverDevices(reason: "health_all_devices_lost", force: false)
-            if recovered {
-                onDeviceReconnected?()
-            }
+            _ = await recoverDevices(reason: "health_all_devices_lost", force: false)
         }
     }
     
