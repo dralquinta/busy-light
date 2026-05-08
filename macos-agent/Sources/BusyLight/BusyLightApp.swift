@@ -246,6 +246,15 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
             let status = self?.deviceConnectionStatus(for: configuredAddress, devices: devices) ?? .unknown
             controller?.updateConfiguredDevice(address: configuredAddress, status: status)
         }
+
+        // Re-send current state whenever a device reconnects so the light is updated immediately.
+        client.onDeviceReconnected = { [weak self] in
+            guard let self,
+                  let stateMachine = self.stateMachine else { return }
+            let state = stateMachine.currentState
+            guard state != .off else { return }
+            Task { await self.networkClient?.sendState(state) }
+        }
         
         // Connect to WLED devices and start health monitoring
         Task {

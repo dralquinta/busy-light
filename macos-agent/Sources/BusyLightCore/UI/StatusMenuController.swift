@@ -15,7 +15,6 @@ public class StatusMenuController {
     private var turnOffMenuItem: NSMenuItem?
     private var deviceStatusItem: NSMenuItem?
     private var deviceConnectedItem: NSMenuItem?
-    private var deviceConnectionStatusItem: NSMenuItem?
     private var deviceLastSyncItem: NSMenuItem?
     private var calendarStatusItem: NSMenuItem?
     private var settingsItem: NSMenuItem?
@@ -163,9 +162,6 @@ public class StatusMenuController {
         // Device configuration (inline items)
         deviceConnectedItem = NSMenuItem(title: "Connected to: Not configured", action: nil, keyEquivalent: "")
         menu.addItem(deviceConnectedItem!)
-
-        deviceConnectionStatusItem = NSMenuItem(title: "Status: Unknown", action: nil, keyEquivalent: "")
-        menu.addItem(deviceConnectionStatusItem!)
 
         deviceLastSyncItem = NSMenuItem(title: "Last sync: Not yet", action: nil, keyEquivalent: "")
         menu.addItem(deviceLastSyncItem!)
@@ -466,10 +462,8 @@ public class StatusMenuController {
     public func updateConfiguredDevice(address: String?, status: DeviceConnectionStatus) {
         if let address = address, !address.isEmpty {
             deviceConnectedItem?.title = "Connected to: \(address)"
-            deviceConnectionStatusItem?.title = "Status: \(status.displayText)"
         } else {
             deviceConnectedItem?.title = "Connected to: Not configured"
-            deviceConnectionStatusItem?.title = "Status: Configuration required"
         }
 
         if address == nil || address?.isEmpty == true {

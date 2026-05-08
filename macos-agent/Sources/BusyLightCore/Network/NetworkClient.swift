@@ -13,9 +13,17 @@ public final class NetworkClient {
     
     private var healthCheckTask: Task<Void, Never>?
     private var isHealthCheckRunning = false
-    
+    private var lastReconnectAttempt: Date = .distantPast
+
+    /// Minimum seconds between automatic re-discovery attempts when all devices are offline.
+    private let reconnectIntervalSeconds: TimeInterval = 60.0
+
     /// Callback invoked when device status changes.
     public var onDeviceStatusChanged: (@MainActor ([WLEDDevice]) -> Void)?
+
+    /// Callback invoked when one or more devices transition from offline to online.
+    /// The app should use this to re-send the current presence state to the light.
+    public var onDeviceReconnected: (@MainActor () -> Void)?
     
     // MARK: - Initialization
     
@@ -255,10 +263,22 @@ public final class NetworkClient {
         networkLogger.logEvent("network_client.health.check", details: [
             "device_count": String(devices.count)
         ])
-        
+
+        // If no devices are known yet, attempt periodic re-discovery (rate-limited).
+        if devices.isEmpty {
+            let elapsed = Date().timeIntervalSince(lastReconnectAttempt)
+            if elapsed > reconnectIntervalSeconds {
+                lastReconnectAttempt = Date()
+                networkLogger.logEvent("network_client.health.rediscover", details: ["reason": "no_devices"])
+                await connect()
+            }
+            return
+        }
+
         var updatedDevices = devices
         var statusChanged = false
-        
+        var hasReconnectedDevice = false
+
         await withTaskGroup(of: (Int, Bool, WLEDDevice).self) { group in
             for (index, device) in devices.enumerated() {
                 group.addTask {
@@ -284,6 +304,12 @@ public final class NetworkClient {
                             "device": device.name ?? device.address,
                             "transition": transition
                         ])
+
+                        if isOnline {
+                            // Clear cached preset so the current state is immediately re-sent.
+                            updatedDevices[index].lastPresetSent = nil
+                            hasReconnectedDevice = true
+                        }
                     }
                 }
             }
@@ -294,6 +320,23 @@ public final class NetworkClient {
         // Notify observers if status changed
         if statusChanged {
             onDeviceStatusChanged?(devices)
+        }
+
+        // Re-send current presence state to devices that just came back online.
+        if hasReconnectedDevice {
+            networkLogger.logEvent("network_client.health.reconnect_detected")
+            onDeviceReconnected?()
+        }
+
+        // If every known device is offline, attempt periodic re-discovery (rate-limited).
+        let allOffline = devices.allSatisfy { !$0.isOnline }
+        if allOffline {
+            let elapsed = Date().timeIntervalSince(lastReconnectAttempt)
+            if elapsed > reconnectIntervalSeconds {
+                lastReconnectAttempt = Date()
+                networkLogger.logEvent("network_client.health.rediscover", details: ["reason": "all_offline"])
+                await connect()
+            }
         }
     }
     
