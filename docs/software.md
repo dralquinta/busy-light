@@ -220,7 +220,7 @@ Settings are persisted in `UserDefaults` under the suite `com.busylight.agent`:
 | `app.device_network_addresses` | `[]` | Array of WLED device IP addresses (merged with discovered devices) |
 | `app.device_network_port` | `80` | WLED HTTP port (standard HTTP) |
 | `app.wled_enable_discovery` | `true` | Enable Bonjour/mDNS auto-discovery |
-| `app.wled_http_timeout` | `500` | HTTP request timeout in milliseconds |
+| `app.wled_http_timeout` | `2500` | HTTP request timeout in milliseconds; lower saved values are raised to this minimum for WLED reliability |
 | `app.wled_health_check_interval` | `10` | Health check polling interval in seconds |
 
 **Preset ID mappings:**

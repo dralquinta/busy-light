@@ -63,7 +63,7 @@ public class ConfigurationManager {
         configuration.wledPresetOff = presetOff != 0 ? presetOff : 6
         
         let timeout = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledHttpTimeout.rawValue)
-        configuration.wledHttpTimeout = timeout != 0 ? timeout : 500
+        configuration.wledHttpTimeout = AppConfiguration.normalizedWledHttpTimeout(timeout)
         
         let healthCheckInterval = userDefaults.integer(forKey: AppConfiguration.CodingKeys.wledHealthCheckInterval.rawValue)
         configuration.wledHealthCheckInterval = healthCheckInterval != 0 ? healthCheckInterval : 10
@@ -298,11 +298,11 @@ public class ConfigurationManager {
     }
     
     public func getWledHttpTimeout() -> Int {
-        return configuration.wledHttpTimeout
+        return AppConfiguration.normalizedWledHttpTimeout(configuration.wledHttpTimeout)
     }
     
     public func setWledHttpTimeout(_ milliseconds: Int) {
-        configuration.wledHttpTimeout = milliseconds
+        configuration.wledHttpTimeout = AppConfiguration.normalizedWledHttpTimeout(milliseconds)
         saveConfiguration()
     }
     

@@ -7,73 +7,115 @@ public final class NetworkClient {
     // MARK: - Properties
     
     private(set) public var devices: [WLEDDevice] = []
-    private let httpAdapter: HTTPAdapter
-    private let discovery: DeviceDiscovery
+    private let httpClient: any WLEDHTTPClient
+    private let probeHTTPClient: any WLEDHTTPClient
+    private let discovery: any WLEDDeviceDiscovering
+    private let networkScanner: any WLEDDeviceScanning
     private let config: ConfigurationManager
     
     private var healthCheckTask: Task<Void, Never>?
+    private var connectTask: Task<Void, Never>?
     private var isHealthCheckRunning = false
-    
+    private var lastReconnectAttempt: Date = .distantPast
+
+    /// Minimum seconds between background re-discovery attempts when no online devices are known.
+    private let reconnectIntervalSeconds: TimeInterval = 5.0
+
     /// Callback invoked when device status changes.
     public var onDeviceStatusChanged: (@MainActor ([WLEDDevice]) -> Void)?
+
+    /// Callback invoked when one or more devices transition from offline to online.
+    /// The app should use this to re-send the current presence state to the light.
+    public var onDeviceReconnected: (@MainActor () -> Void)?
     
     // MARK: - Initialization
     
-    public init(config: ConfigurationManager = .shared) {
+    public init(
+        config: ConfigurationManager = .shared,
+        httpClient: (any WLEDHTTPClient)? = nil,
+        probeHTTPClient: (any WLEDHTTPClient)? = nil,
+        discovery: (any WLEDDeviceDiscovering)? = nil,
+        networkScanner: (any WLEDDeviceScanning)? = nil
+    ) {
         self.config = config
-        self.httpAdapter = HTTPAdapter(timeoutMilliseconds: config.getWledHttpTimeout())
-        self.discovery = DeviceDiscovery()
+        let defaultHTTPClient = httpClient ?? HTTPAdapter(timeoutMilliseconds: config.getWledHttpTimeout())
+        self.httpClient = defaultHTTPClient
+        self.probeHTTPClient = probeHTTPClient
+            ?? httpClient
+            ?? HTTPAdapter(timeoutMilliseconds: config.getWledHttpTimeout(), maxRetries: 1)
+        self.discovery = discovery ?? DeviceDiscovery()
+        self.networkScanner = networkScanner ?? LocalNetworkScanner()
         
         networkLogger.logEvent("network_client.initialized")
     }
     
     // MARK: - Connection Management
     
-    /// Discovers devices via mDNS and merges with manually configured IPs.
+    /// Discovers online devices via mDNS/subnet scan and verifies manually configured IPs as a fallback.
     public func connect() async {
+        if let connectTask {
+            networkLogger.logEvent("network_client.connect.joined")
+            await connectTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.performConnect()
+        }
+        connectTask = task
+        await task.value
+        connectTask = nil
+    }
+
+    private func performConnect() async {
         networkLogger.logEvent("network_client.connect.started")
         
         var allDevices: [WLEDDevice] = []
-        
-        // Discover devices if enabled
-        if config.getWledEnableDiscovery() {
-            let discoveredDevices = await discovery.discoverDevices(timeout: 5.0)
-            allDevices.append(contentsOf: discoveredDevices)
-            
-            networkLogger.logEvent("network_client.connect.discovered", details: [
-                "count": String(discoveredDevices.count)
-            ])
-        }
-
-        // Auto-configure the first discovered device if no address is set
-        if config.getDeviceNetworkAddresses().isEmpty, let firstDevice = allDevices.first {
-            config.setDeviceNetworkAddress(firstDevice.address)
-            config.setDeviceNetworkAddresses([firstDevice.address])
-
-            networkLogger.logEvent("network_client.device_auto_configured", details: [
-                "address": firstDevice.address,
-                "port": String(firstDevice.port)
-            ])
-        }
-        
-        // Add manually configured devices
-        let configuredAddresses = config.getDeviceNetworkAddresses()
         let port = config.getDeviceNetworkPort()
         
-        for address in configuredAddresses {
-            // Skip if already discovered
-            if !allDevices.contains(where: { $0.address == address }) {
-                let manualDevice = WLEDDevice.manualDevice(address: address, port: port)
-                allDevices.append(manualDevice)
-                
-                networkLogger.logEvent("network_client.connect.manual", details: [
-                    "address": address,
-                    "port": String(port)
-                ])
-            }
+        let configuredAddresses = configuredDeviceAddresses()
+        if !configuredAddresses.isEmpty {
+            let verifiedManualDevices = await verifyConfiguredDevices(configuredAddresses, port: port)
+            appendUniqueDevices(verifiedManualDevices, to: &allDevices)
+
+            networkLogger.logEvent("network_client.connect.discovered", details: [
+                "source": "configured",
+                "count": String(verifiedManualDevices.count)
+            ])
+        }
+
+        if allDevices.isEmpty && config.getWledEnableDiscovery() {
+            // Bonjour is fast when available; subnet scan recovers WLED devices
+            // that do not advertise or have moved to a new DHCP IP.
+            let bonjourDevices = await discovery.discoverDevices(timeout: 5.0)
+            appendUniqueDevices(bonjourDevices, to: &allDevices)
+            
+            networkLogger.logEvent("network_client.connect.discovered", details: [
+                "source": "bonjour",
+                "count": String(bonjourDevices.count)
+            ])
+        }
+
+        if allDevices.isEmpty && config.getWledEnableDiscovery() {
+            let scannedDevices = await networkScanner.scanForDevices(
+                port: port,
+                timeout: 5.0,
+                priorityAddresses: configuredAddresses
+            )
+            appendUniqueDevices(scannedDevices, to: &allDevices)
+
+            networkLogger.logEvent("network_client.connect.discovered", details: [
+                "source": "subnet_scan",
+                "count": String(scannedDevices.count)
+            ])
+        }
+
+        if !allDevices.isEmpty {
+            persistDiscoveredDeviceAddresses(allDevices)
         }
         
-        devices = allDevices
+        devices = allDevices.filter(\.isOnline)
         
         networkLogger.logEvent("network_client.connect.completed", details: [
             "total_devices": String(devices.count)
@@ -81,9 +123,6 @@ public final class NetworkClient {
         
         // Notify observers
         onDeviceStatusChanged?(devices)
-        
-        // Verify connectivity for all devices
-        await verifyAllDevices()
     }
     
     /// Refreshes device list by re-running discovery.
@@ -109,7 +148,7 @@ public final class NetworkClient {
         ])
 
         stopHealthMonitoring()
-        await httpAdapter.cancelAllRequests()
+        await httpClient.cancelAllRequests()
         devices.removeAll()
 
         await connect()
@@ -122,6 +161,10 @@ public final class NetworkClient {
     /// Broadcasts to all devices in parallel using TaskGroup.
     /// - Parameter state: Presence state to broadcast
     public func sendState(_ state: PresenceState) async {
+        await sendState(state, allowRecovery: true)
+    }
+
+    private func sendState(_ state: PresenceState, allowRecovery: Bool) async {
         let presetId = config.getWledPreset(for: state)
         
         networkLogger.logEvent("network_client.send_state", details: [
@@ -129,9 +172,13 @@ public final class NetworkClient {
             "preset": String(presetId),
             "device_count": String(devices.count)
         ])
-        
+
+        if devices.isEmpty && allowRecovery {
+            _ = await recoverDevices(reason: "send_no_online_devices", force: true)
+        }
+
         guard !devices.isEmpty else {
-            networkLogger.logEvent("network_client.send_state.no_devices")
+            networkLogger.logEvent("network_client.send_state.no_online_devices")
             return
         }
         
@@ -160,11 +207,18 @@ public final class NetworkClient {
                 }
             }
             
-            devices = updatedDevices
+            devices = updatedDevices.filter(\.isOnline)
         }
         
         // Notify observers of status changes
         onDeviceStatusChanged?(devices)
+
+        if devices.isEmpty && allowRecovery {
+            let recovered = await recoverDevices(reason: "send_all_devices_failed", force: true)
+            if recovered {
+                await sendState(state, allowRecovery: false)
+            }
+        }
     }
     
     /// Sends preset to a single device with deduplication.
@@ -186,7 +240,7 @@ public final class NetworkClient {
         let request = WLEDStateRequest(presetId: presetId, includeResponse: true)
         
         do {
-            let response = try await httpAdapter.postState(
+            let response = try await httpClient.postState(
                 to: device.address,
                 port: device.port,
                 request: request
@@ -230,6 +284,8 @@ public final class NetworkClient {
         ])
         
         healthCheckTask = Task { [weak self] in
+            await self?.performHealthCheck()
+
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(interval))
                 
@@ -255,10 +311,20 @@ public final class NetworkClient {
         networkLogger.logEvent("network_client.health.check", details: [
             "device_count": String(devices.count)
         ])
-        
+
+        // If no online devices are known yet, attempt periodic re-discovery (rate-limited).
+        if devices.isEmpty {
+            let recovered = await recoverDevices(reason: "health_no_online_devices", force: false)
+            if recovered {
+                onDeviceReconnected?()
+            }
+            return
+        }
+
         var updatedDevices = devices
         var statusChanged = false
-        
+        var hasReconnectedDevice = false
+
         await withTaskGroup(of: (Int, Bool, WLEDDevice).self) { group in
             for (index, device) in devices.enumerated() {
                 group.addTask {
@@ -284,16 +350,40 @@ public final class NetworkClient {
                             "device": device.name ?? device.address,
                             "transition": transition
                         ])
+
+                        if isOnline {
+                            // Clear cached preset so the current state is immediately re-sent.
+                            updatedDevices[index].lastPresetSent = nil
+                            hasReconnectedDevice = true
+                        }
                     }
                 }
             }
         }
         
-        devices = updatedDevices
+        let onlineDevices = updatedDevices.filter(\.isOnline)
+        if onlineDevices.count != updatedDevices.count {
+            statusChanged = true
+        }
+
+        devices = onlineDevices
         
         // Notify observers if status changed
         if statusChanged {
             onDeviceStatusChanged?(devices)
+        }
+
+        // Re-send current presence state to devices that just came back online.
+        if hasReconnectedDevice {
+            networkLogger.logEvent("network_client.health.reconnect_detected")
+            onDeviceReconnected?()
+        }
+
+        if devices.isEmpty {
+            let recovered = await recoverDevices(reason: "health_all_devices_lost", force: false)
+            if recovered {
+                onDeviceReconnected?()
+            }
         }
     }
     
@@ -305,15 +395,109 @@ public final class NetworkClient {
             "port": String(device.port)
         ])
         do {
-            _ = try await httpAdapter.getInfo(from: device.address, port: device.port)
+            _ = try await probeHTTPClient.getInfo(from: device.address, port: device.port)
             return true
         } catch {
             return false
         }
     }
     
-    /// Verifies connectivity for all devices.
-    private func verifyAllDevices() async {
-        await performHealthCheck()
+    private func appendUniqueDevices(_ newDevices: [WLEDDevice], to devices: inout [WLEDDevice]) {
+        for device in newDevices {
+            let alreadyKnown = devices.contains {
+                $0.id == device.id || $0.address == device.address
+            }
+
+            if !alreadyKnown {
+                devices.append(device)
+            }
+        }
+    }
+
+    private func verifyConfiguredDevices(_ addresses: [String], port: Int) async -> [WLEDDevice] {
+        var verifiedDevices: [WLEDDevice] = []
+
+        for address in addresses {
+            do {
+                let info = try await probeHTTPClient.getInfo(from: address, port: port)
+                guard isWLEDInfo(info) else { continue }
+
+                let resolvedAddress = info.ip.flatMap(NetworkAddressValidator.normalizeIPv4Address) ?? address
+                let device = WLEDDevice(
+                    id: info.mac.isEmpty ? "manual-\(resolvedAddress)" : info.mac,
+                    address: resolvedAddress,
+                    port: port,
+                    name: info.name,
+                    isOnline: true,
+                    lastSeen: Date()
+                )
+
+                verifiedDevices.append(device)
+                networkLogger.logEvent("network_client.connect.manual.verified", details: [
+                    "address": resolvedAddress,
+                    "port": String(port)
+                ])
+            } catch {
+                networkLogger.logEvent("network_client.connect.manual.offline", details: [
+                    "address": address,
+                    "port": String(port),
+                    "error": error.localizedDescription
+                ])
+            }
+        }
+
+        return verifiedDevices
+    }
+
+    private func configuredDeviceAddresses() -> [String] {
+        let savedAddresses = config.getDeviceNetworkAddresses()
+        let legacyAddress = config.getDeviceNetworkAddress()
+
+        var seen = Set<String>()
+        var addresses: [String] = []
+        for address in savedAddresses + [legacyAddress] {
+            let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedAddress.isEmpty,
+                  seen.insert(trimmedAddress).inserted else {
+                continue
+            }
+
+            addresses.append(trimmedAddress)
+        }
+
+        return addresses
+    }
+
+    private func recoverDevices(reason: String, force: Bool) async -> Bool {
+        let elapsed = Date().timeIntervalSince(lastReconnectAttempt)
+        guard force || elapsed >= reconnectIntervalSeconds else {
+            return false
+        }
+
+        lastReconnectAttempt = Date()
+        networkLogger.logEvent("network_client.rediscover", details: ["reason": reason])
+        await connect()
+        return !devices.isEmpty
+    }
+
+    private func isWLEDInfo(_ info: WLEDInfoResponse) -> Bool {
+        return info.ver.contains("0.") || info.ver.lowercased().contains("wled")
+    }
+
+    private func persistDiscoveredDeviceAddresses(_ discoveredDevices: [WLEDDevice]) {
+        let addresses = discoveredDevices.map(\.address)
+        guard let firstAddress = addresses.first else { return }
+
+        if config.getDeviceNetworkAddress() != firstAddress {
+            config.setDeviceNetworkAddress(firstAddress)
+        }
+
+        if config.getDeviceNetworkAddresses() != addresses {
+            config.setDeviceNetworkAddresses(addresses)
+        }
+
+        networkLogger.logEvent("network_client.device_auto_configured", details: [
+            "addresses": addresses.joined(separator: ",")
+        ])
     }
 }

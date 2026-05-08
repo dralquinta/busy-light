@@ -15,7 +15,6 @@ public class StatusMenuController {
     private var turnOffMenuItem: NSMenuItem?
     private var deviceStatusItem: NSMenuItem?
     private var deviceConnectedItem: NSMenuItem?
-    private var deviceConnectionStatusItem: NSMenuItem?
     private var deviceLastSyncItem: NSMenuItem?
     private var calendarStatusItem: NSMenuItem?
     private var settingsItem: NSMenuItem?
@@ -157,15 +156,12 @@ public class StatusMenuController {
         menu.addItem(NSMenuItem.separator())
         
         // Device status
-        deviceStatusItem = NSMenuItem(title: "Device: Offline", action: nil, keyEquivalent: "")
+        deviceStatusItem = NSMenuItem(title: "Device: Searching", action: nil, keyEquivalent: "")
         menu.addItem(deviceStatusItem!)
 
         // Device configuration (inline items)
-        deviceConnectedItem = NSMenuItem(title: "Connected to: Not configured", action: nil, keyEquivalent: "")
+        deviceConnectedItem = NSMenuItem(title: "Connected to: Searching", action: nil, keyEquivalent: "")
         menu.addItem(deviceConnectedItem!)
-
-        deviceConnectionStatusItem = NSMenuItem(title: "Status: Unknown", action: nil, keyEquivalent: "")
-        menu.addItem(deviceConnectionStatusItem!)
 
         deviceLastSyncItem = NSMenuItem(title: "Last sync: Not yet", action: nil, keyEquivalent: "")
         menu.addItem(deviceLastSyncItem!)
@@ -424,31 +420,30 @@ public class StatusMenuController {
     
     /// Updates device status display for multiple WLED devices.
     public func updateDeviceList(_ devices: [WLEDDevice]) {
-        let onlineCount = devices.filter { $0.isOnline }.count
+        let onlineDevices = devices.filter { $0.isOnline }
+        let onlineCount = onlineDevices.count
         let offlineCount = devices.count - onlineCount
         
         let statusText: String
-        if devices.isEmpty {
-            statusText = "Device: Configuration missing"
-        } else if offlineCount == 0 {
+        if onlineDevices.isEmpty {
+            statusText = "Device: Searching"
+        } else if onlineCount == 1 {
             statusText = "Device: Online"
-        } else if onlineCount == 0 {
-            statusText = "Device: Offline"
         } else {
-            statusText = "Devices: \(onlineCount) online, \(offlineCount) offline"
+            statusText = "Devices: \(onlineCount) online"
         }
         
         deviceStatusItem?.title = statusText
-        deviceLastSyncItem?.title = "Last sync: \(formatLastSync(from: devices))"
+        deviceLastSyncItem?.title = "Last sync: \(formatLastSync(from: onlineDevices))"
         
         // Build tooltip with individual device details
         var tooltip = "WLED Devices:\n"
-        if devices.isEmpty {
-            tooltip += "  No devices configured\n"
-            tooltip += "  Configure via UserDefaults or enable discovery"
+        if onlineDevices.isEmpty {
+            tooltip += "  No online WLED devices found\n"
+            tooltip += "  Scanning local network"
         } else {
-            for device in devices {
-                let status = device.isOnline ? "●" : "○"
+            for device in onlineDevices {
+                let status = "●"
                 let name = device.name ?? device.address
                 tooltip += "  \(status) \(name) (\(device.address):\(device.port))\n"
             }
@@ -466,14 +461,12 @@ public class StatusMenuController {
     public func updateConfiguredDevice(address: String?, status: DeviceConnectionStatus) {
         if let address = address, !address.isEmpty {
             deviceConnectedItem?.title = "Connected to: \(address)"
-            deviceConnectionStatusItem?.title = "Status: \(status.displayText)"
         } else {
-            deviceConnectedItem?.title = "Connected to: Not configured"
-            deviceConnectionStatusItem?.title = "Status: Configuration required"
+            deviceConnectedItem?.title = "Connected to: Searching"
         }
 
         if address == nil || address?.isEmpty == true {
-            deviceStatusItem?.title = "Device: Configuration missing"
+            deviceStatusItem?.title = "Device: Searching"
             deviceLastSyncItem?.title = "Last sync: Not yet"
         }
 
@@ -484,15 +477,10 @@ public class StatusMenuController {
     }
 
     private func updateMenuAppearance() {
-        let config = ConfigurationManager.shared
-        let state = config.getPresenceState()
+        let state = ConfigurationManager.shared.getPresenceState()
         updatePresenceState(state, source: .startup, reason: .unknown, mode: currentMode)
 
-        updateConfiguredDevice(address: config.getDeviceNetworkAddresses().first, status: .unknown)
-
-        // Initialize device status as disconnected (will be updated later)
-        let initialStatus = DeviceStatus(connectionState: .disconnected)
-        updateDeviceStatus(initialStatus)
+        updateDeviceList([])
     }
 
     private func updateButtonAppearance(for state: PresenceState) {
@@ -794,9 +782,9 @@ public class StatusMenuController {
         case .connected:
             return "Device: Online"
         case .disconnected:
-            return "Device: Offline"
+            return "Device: Searching"
         case .error:
-            return "Device: Offline"
+            return "Device: Searching"
         }
     }
 

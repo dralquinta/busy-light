@@ -3,7 +3,7 @@ import Foundation
 /// Discovers WLED devices on the local network using Bonjour/mDNS.
 /// Uses standard HTTP service discovery (_http._tcp) and filters for WLED devices.
 @MainActor
-public final class DeviceDiscovery: NSObject, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
+public final class DeviceDiscovery: NSObject, WLEDDeviceDiscovering, @preconcurrency NetServiceBrowserDelegate, @preconcurrency NetServiceDelegate {
     private var browser: NetServiceBrowser?
     private var pendingServices: [NetService] = []
     private var discoveredDevices: [WLEDDevice] = []
@@ -24,7 +24,7 @@ public final class DeviceDiscovery: NSObject, @preconcurrency NetServiceBrowserD
         
         discoveredDevices.removeAll()
         pendingServices.removeAll()
-        httpAdapter = HTTPAdapter(timeoutMilliseconds: 500)
+        httpAdapter = HTTPAdapter(timeoutMilliseconds: AppConfiguration.minimumWledHttpTimeout, maxRetries: 1)
         
         return await withCheckedContinuation { continuation in
             self.discoveryContinuation = continuation
@@ -77,7 +77,7 @@ public final class DeviceDiscovery: NSObject, @preconcurrency NetServiceBrowserD
         // If no more services coming, wait a bit for resolutions to complete
         if !moreComing {
             Task { [weak self] in
-                try? await Task.sleep(for: .seconds(1.0))
+                try? await Task.sleep(for: .seconds(3.0))
                 self?.stopDiscovery()
             }
         }

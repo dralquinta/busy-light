@@ -2,6 +2,9 @@ import Foundation
 
 /// Configuration settings persisted via UserDefaults.
 public struct AppConfiguration: Codable, Sendable {
+    public static let minimumWledHttpTimeout = 2_500
+    public static let defaultWledHttpTimeout = minimumWledHttpTimeout
+
     public var presenceState: PresenceState = .available
     
     // Legacy network configuration (deprecated, use deviceNetworkAddresses)
@@ -25,8 +28,8 @@ public struct AppConfiguration: Codable, Sendable {
     public var wledPresetUnknown: Int = 5
     /// WLED preset ID for Off state (default: 6)
     public var wledPresetOff: Int = 6
-    /// HTTP request timeout in milliseconds (default: 500ms)
-    public var wledHttpTimeout: Int = 500
+    /// HTTP request timeout in milliseconds (default: 2500ms)
+    public var wledHttpTimeout: Int = defaultWledHttpTimeout
     /// Health check polling interval in seconds (default: 10s)
     public var wledHealthCheckInterval: Int = 10
     /// Enable Bonjour/mDNS device discovery (default: true)
@@ -75,6 +78,11 @@ public struct AppConfiguration: Codable, Sendable {
     public var enabledCalendarTitles: [String] = []
     
     public init() {}
+
+    public static func normalizedWledHttpTimeout(_ milliseconds: Int) -> Int {
+        let requested = milliseconds > 0 ? milliseconds : defaultWledHttpTimeout
+        return max(requested, minimumWledHttpTimeout)
+    }
     
     /// Default configuration with all default values
     public static let defaultConfiguration = AppConfiguration()

@@ -19,9 +19,6 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         // Configure app to run in menu bar only (no Dock icon)
         NSApplication.shared.setActivationPolicy(.prohibited)
         
-        // Check accessibility permission required for global hotkey monitoring
-        checkAccessibilityPermission()
-
         // Initialize configuration system
         ConfigurationManager.shared.loadConfiguration()
         lifecycleLogger.logEvent("Configuration manager initialized")
@@ -114,7 +111,7 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
                 "new": address
             ])
 
-            controller?.updateConfiguredDevice(address: address, status: .unknown)
+            controller?.updateConfiguredDevice(address: nil, status: .unknown)
 
             Task {
                 await self?.networkClient?.applyDeviceHostOverride(address)
@@ -242,9 +239,18 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         // Wire network client callback to update UI with device statuses
         client.onDeviceStatusChanged = { [weak controller, weak self] devices in
             controller?.updateDeviceList(devices)
-            let configuredAddress = ConfigurationManager.shared.getDeviceNetworkAddresses().first
-            let status = self?.deviceConnectionStatus(for: configuredAddress, devices: devices) ?? .unknown
-            controller?.updateConfiguredDevice(address: configuredAddress, status: status)
+            let onlineAddress = devices.first?.address
+            let status = self?.deviceConnectionStatus(for: onlineAddress, devices: devices) ?? .unknown
+            controller?.updateConfiguredDevice(address: onlineAddress, status: status)
+        }
+
+        // Re-send current state whenever a device reconnects so the light is updated immediately.
+        client.onDeviceReconnected = { [weak self] in
+            guard let self,
+                  let stateMachine = self.stateMachine else { return }
+            let state = stateMachine.currentState
+            guard state != .off else { return }
+            Task { await self.networkClient?.sendState(state) }
         }
         
         // Connect to WLED devices and start health monitoring
@@ -264,6 +270,13 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         
         // Initialize state machine
         machine.handleEvent(.startupInitialize)
+
+        // Defer the global-hotkey permission prompt so it cannot block WLED
+        // discovery and the first state send during launch.
+        Task {
+            try? await Task.sleep(for: .seconds(5))
+            checkAccessibilityPermission()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -313,43 +326,16 @@ class BusyLightApp: NSObject, NSApplicationDelegate {
         }
     }
     
-    /// Checks if accessibility permission is granted and shows a popup if not.
+    /// Checks whether global-hotkey accessibility permission is granted.
     private func checkAccessibilityPermission() {
-        // Check if accessibility is enabled
-        let isTrusted = AXIsProcessTrusted()
-        
-        if !isTrusted {
-            // Permission not granted - show popup
-            let alert = NSAlert()
-            alert.messageText = "Accessibility Permission Required"
-            alert.informativeText = """
-            BusyLight needs Accessibility permission to monitor global hotkeys (F13–F17).
-            
-            Steps to enable:
-            1. Open System Settings → Privacy & Security → Accessibility
-            2. Look for "BusyLight" in the list
-            3. If not there, click "+" and select BusyLight.app
-            4. Toggle the switch ON
-            5. Restart BusyLight
-            
-            Without this permission, hotkeys from Stream Deck or keyboard won't be detected.
-            """
-            alert.addButton(withTitle: "Open System Settings")
-            alert.addButton(withTitle: "Remind Later")
-            alert.alertStyle = .warning
-            
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                // Open System Preferences to Accessibility
-                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
-            
-            lifecycleLogger.logEvent("accessibility.permission.not_granted")
-        } else {
+        let promptKey = "AXTrustedCheckOptionPrompt"
+        let options = [promptKey: true] as CFDictionary
+        let isTrusted = AXIsProcessTrustedWithOptions(options)
+
+        if isTrusted {
             lifecycleLogger.logEvent("accessibility.permission.granted")
+        } else {
+            lifecycleLogger.logEvent("accessibility.permission.not_granted")
         }
     }
 }
-
