@@ -9,14 +9,20 @@ which allowed this unsupported platform gap to persist.
 
 ## How It Was Fixed
 
-Pending implementation. The planned correction is a separately maintained
-.NET 8 Windows agent with a pure Core parity layer, Windows platform adapters,
-native tray UI, test corpus, packaging, CI, and platform documentation.
+Implemented the initial .NET 8 Windows agent foundation: a portable Core state
+machine and configuration model, WLED transport/discovery/health primitives,
+native system-presence mapping and monitor, a tray host skeleton, platform
+tests, and Windows CI. The Platform project now explicitly references
+`Microsoft.Win32.SystemEvents` so the native session and power event types
+compile on Windows.
 
 ## Summary
 
-Tracking artifacts created; implementation has not started.
+The Windows implementation is in progress. Native presence monitor compilation
+has been repaired after Windows CI reported the missing forwarded assembly.
 
 ## Validation
 
-Not run. Tracking documentation only.
+Windows CI run `35177667095` exposed the `CS1069` dependency failure. A new
+Windows CI run is required to validate the package-reference remediation;
+local .NET execution is unavailable on the authoring host.

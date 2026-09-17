@@ -61,3 +61,27 @@ and Refactor with the exact command output summary.
 - The initial document covers the values exercised by this slice. The complete
   parity key set and unknown-key round-trip are scheduled for the settings
   surface expansion.
+
+## Cycle 3 — Native system-presence monitor compile remediation
+
+### Red
+
+- Windows CI run `35177667095` failed to compile `SystemPresenceMonitor` with
+  `CS1069`: the `Microsoft.Win32.SystemEvents` forwarded assembly was not
+  referenced by the Platform project.
+
+### Green
+
+- Added the explicit `Microsoft.Win32.SystemEvents` 8.0.0 package reference to
+  `BusyLight.Platform`. This supplies the `SessionSwitchEventArgs` and
+  `PowerModeChangedEventArgs` types used by the native monitor.
+
+### Refactor
+
+- No behavioral refactor was needed; this is the smallest dependency fix for
+  the compile-time framework type forwarder.
+
+### Validation
+
+- Local .NET validation remains unavailable on this Linux host. The next
+  pushed Windows CI run is the authoritative build and test check.
