@@ -47,10 +47,11 @@ implementation starts. Ownership will be non-overlapping:
 
 | Owner | Files | Responsibility |
 |---|---|---|
-| Integration owner | solution, shared docs, final merge | coordinate slices and validate end-to-end |
-| Core owner | `windows-agent/src/BusyLight.Core/**`, Core tests | pure domain and conformance behavior |
-| Platform owner | `windows-agent/src/BusyLight.Platform/**`, Platform tests | Windows adapters and networking |
-| Verification owner | test audit and docs only | independent TDD/traceability review |
+| Root / integration owner | `windows-agent/BusyLight.sln`, `windows-agent/Directory.Build.props`, `windows-agent/src/BusyLight.Platform/**`, `windows-agent/src/BusyLight.Agent/**`, `windows-agent/tests/BusyLight.Platform.Tests/**`, packaging, CI, shared docs | coordinate slices, platform/agent implementation, and final integration |
+| `/root/core` | `windows-agent/src/BusyLight.Core/**`, `windows-agent/tests/BusyLight.Core.Tests/**`, `docs/specs/state-machine-conformance.json` | pure domain and conformance behavior |
+| `/root/auditor` | `docs/fixes/31-introduce-support-for-windows/win11-support/audit.md` | independent TDD and traceability review |
+
+There are no overlapping owned paths. The root is the integration owner.
 
 ## Tracking
 
