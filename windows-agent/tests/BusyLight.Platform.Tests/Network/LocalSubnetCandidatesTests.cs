@@ -1,5 +1,6 @@
 using System.Net;
 using BusyLight.Platform.Network;
+using Xunit;
 
 namespace BusyLight.Platform.Tests.Network;
 
