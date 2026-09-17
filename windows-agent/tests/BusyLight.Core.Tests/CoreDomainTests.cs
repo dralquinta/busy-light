@@ -18,7 +18,7 @@ public sealed class CoreDomainTests
     [Fact]
     public void OfficeHours_UsesPreviousWeekdayForOvernightWindow()
     {
-        var officeHours = new OfficeHoursConfiguration(true, 22 * 60, 2 * 60, [2]); // Monday night to Tuesday 02:00
+        var officeHours = new OfficeHoursConfiguration(true, 22 * 60, 2 * 60, new HashSet<int> { 2 }); // Monday night to Tuesday 02:00
         var calendar = new GregorianCalendar();
         var tuesdayAtOne = new DateTimeOffset(2026, 9, 15, 1, 0, 0, TimeSpan.Zero);
         Assert.True(officeHours.Contains(tuesdayAtOne, calendar));
