@@ -1,0 +1,20 @@
+[
+  {
+    "name": "manual-override-blocks-calendar",
+    "config": { "manualOverrideTimeoutMinutes": 30, "stateStabilizationSeconds": 0 },
+    "steps": [
+      { "event": { "kind": "startupInitialize" }, "expect": { "state": "unknown", "mode": "auto", "source": "startup" } },
+      { "event": { "kind": "manualOverride", "state": "busy" }, "expect": { "state": "busy", "mode": "manual", "source": "manual", "busyReason": "manual" } },
+      { "event": { "kind": "calendarUpdated", "state": "available" }, "expect": { "state": "busy", "mode": "manual", "source": "manual", "blockedReason": "manual-override-active" } }
+    ]
+  },
+  {
+    "name": "system-away-restores-calendar-state",
+    "config": { "manualOverrideTimeoutMinutes": 30, "stateStabilizationSeconds": 0 },
+    "steps": [
+      { "event": { "kind": "calendarUpdated", "state": "busy" }, "expect": { "state": "busy", "mode": "auto", "source": "calendar" } },
+      { "event": { "kind": "systemAway" }, "expect": { "state": "away", "mode": "auto", "source": "system" } },
+      { "event": { "kind": "systemReturned" }, "expect": { "state": "busy", "mode": "auto", "source": "calendar" } }
+    ]
+  }
+]
