@@ -1,4 +1,5 @@
 using BusyLight.Platform.Network;
+using System;
 using Xunit;
 
 namespace BusyLight.Platform.Tests.Network;
@@ -6,7 +7,7 @@ namespace BusyLight.Platform.Tests.Network;
 public sealed class WledHttpClientOptionsTests
 {
     [Fact]
-    public void Create_UsesTheSpecificationTimeoutAndDisablesProxy()
+    public void CreateUsesTheSpecificationTimeoutAndDisablesProxy()
     {
         var options = WledHttpClientOptions.Create(TimeSpan.FromMilliseconds(1));
 

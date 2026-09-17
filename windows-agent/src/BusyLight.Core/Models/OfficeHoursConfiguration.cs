@@ -9,7 +9,7 @@ public sealed record OfficeHoursConfiguration(bool IsEnabled = false, int StartM
     public int Start { get; init; } = Math.Clamp(StartMinuteOfDay, 0, 1439);
     public int End { get; init; } = Math.Clamp(EndMinuteOfDay, 0, 1439);
 
-    public bool Contains(DateTimeOffset date, Calendar? calendar = null)
+    public bool Contains(DateTimeOffset date, System.Globalization.Calendar? calendar = null)
     {
         if (!IsEnabled) return true;
         calendar ??= CultureInfo.CurrentCulture.Calendar;
