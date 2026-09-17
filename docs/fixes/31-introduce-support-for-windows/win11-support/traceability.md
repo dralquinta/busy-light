@@ -14,9 +14,9 @@
 
 | Requirement family | Implementation/test evidence | Validation command | Status |
 |---|---|---|---|
-| D-1/D-2 and SM-W1..SM-W5 | Core State models/machine; `StateMachineConformanceTests`, `StateTransitionTests` | `dotnet test windows-agent/tests/BusyLight.Core.Tests/BusyLight.Core.Tests.csproj -c Release` | In progress |
-| Office-hours parity | Core scheduling model; `OfficeHoursConfigurationTests` | focused Core tests | Planned |
-| Calendar availability parity | Core Calendar resolver; `CalendarAvailabilityResolverTests` | focused Core tests | Planned |
-| WLED model and IPv4 primitives | Core Network types/validator; `WledTypesTests`, `NetworkAddressValidatorTests` | focused Core tests | Planned |
+| D-1/D-2 and SM-W1..SM-W5 | Core State models/machine; `StateMachineConformanceTests`, `StateTransitionTests` | `dotnet test windows-agent/tests/BusyLight.Core.Tests/BusyLight.Core.Tests.csproj -c Release` | Implemented; CI pending |
+| Office-hours parity | Core scheduling model; `CoreDomainTests` | focused Core tests | Implemented; CI pending |
+| Calendar availability parity | Core Calendar resolver; `CoreDomainTests` | focused Core tests | Implemented; CI pending |
+| WLED model and IPv4 primitives | Core Network types/validator; `CoreDomainTests` | focused Core tests | Implemented; CI pending |
 | Transport defaults | Platform `WledHttpClientOptions`; `WledHttpClientOptionsTests` | `dotnet test windows-agent/tests/BusyLight.Platform.Tests/BusyLight.Platform.Tests.csproj -c Release` | In progress |
 | Cross-agent corpus protection | C# and Swift corpus runners; CI jobs | `dotnet test windows-agent/BusyLight.sln -c Release`; `swift test --package-path macos-agent` | Planned |

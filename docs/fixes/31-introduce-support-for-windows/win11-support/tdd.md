@@ -26,7 +26,9 @@ and Refactor with the exact command output summary.
 
 - Added the first Platform implementation, `WledHttpClientOptions`, satisfying
   the transport-options test contract.
-- Core implementation is in progress under its independent file ownership.
+- Added the portable `BusyLight.Core` implementation and focused domain,
+  transition, configuration, and conformance tests. Runtime Green evidence is
+  pending `windows-latest` because no .NET compiler is installed locally.
 
 ### Refactor
 
