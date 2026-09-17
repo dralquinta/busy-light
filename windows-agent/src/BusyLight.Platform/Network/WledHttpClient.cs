@@ -34,7 +34,7 @@ public sealed class WledHttpClient(HttpClient client, WledHttpClientOptions opti
             }
             catch (HttpRequestException) when (attempt < options.MaxAttempts)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100 * (1 << (attempt - 1)), linked.Token).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(100 * (1 << (attempt - 1))), linked.Token).ConfigureAwait(false);
             }
             catch (HttpRequestException) { return false; }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return false; }
