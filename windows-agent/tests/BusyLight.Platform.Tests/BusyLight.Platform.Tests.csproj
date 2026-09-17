@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/BusyLight.Platform/BusyLight.Platform.csproj" />
+    <ProjectReference Include="../../src/BusyLight.Core/BusyLight.Core.csproj" />
   </ItemGroup>
 </Project>

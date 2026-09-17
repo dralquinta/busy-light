@@ -19,4 +19,5 @@
 | Calendar availability parity | Core Calendar resolver; `CoreDomainTests` | focused Core tests | Implemented; CI pending |
 | WLED model and IPv4 primitives | Core Network types/validator; `CoreDomainTests` | focused Core tests | Implemented; CI pending |
 | Transport defaults | Platform `WledHttpClientOptions`; `WledHttpClientOptionsTests` | `dotnet test windows-agent/tests/BusyLight.Platform.Tests/BusyLight.Platform.Tests.csproj -c Release` | In progress |
+| CFG-1, CFG-4 baseline persistence | Platform `JsonConfigurationStore`; `JsonConfigurationStoreTests` | focused Platform tests | Implemented; CI pending |
 | Cross-agent corpus protection | C# and Swift corpus runners; CI jobs | `dotnet test windows-agent/BusyLight.sln -c Release`; `swift test --package-path macos-agent` | Planned |

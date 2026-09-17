@@ -40,3 +40,24 @@ and Refactor with the exact command output summary.
   (`rtk: No such file or directory`). The new Windows CI workflow installs the
   .NET 8 SDK and runs restore, build, and the full solution tests on
   `windows-latest`.
+
+## Cycle 2 — JSON configuration persistence
+
+### Red
+
+- Added `JsonConfigurationStoreTests.SaveThenLoad_PreservesKnownValuesAndWritesSchemaVersion`
+  before the store. It requires the `schema_version` root key and persisted
+  BusyLight configuration values.
+- Runtime execution remains pending Windows CI because this host has no .NET
+  SDK.
+
+### Green
+
+- Added atomic same-directory temporary-file replacement and corrupt-document
+  recovery in `JsonConfigurationStore`.
+
+### Refactor
+
+- The initial document covers the values exercised by this slice. The complete
+  parity key set and unknown-key round-trip are scheduled for the settings
+  surface expansion.
