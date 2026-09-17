@@ -54,6 +54,6 @@ implementation starts. Ownership will be non-overlapping:
 
 ## Tracking
 
-- Draft PR: pending creation.
+- Draft PR: https://github.com/dralquinta/busy-light/pull/32
 - Base branch: `main`.
 - No implementation files are modified by this tracking commit.
