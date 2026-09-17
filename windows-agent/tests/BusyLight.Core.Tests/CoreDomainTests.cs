@@ -28,7 +28,7 @@ public sealed class CoreDomainTests
     public void CalendarResolver_TreatsNotSupportedAsBusy()
     {
         var now = DateTimeOffset.UtcNow;
-        var state = new CalendarAvailabilityResolver().Resolve([new CalendarEvent(now.AddMinutes(-1), now.AddMinutes(1), CalendarAvailability.NotSupported)], now);
+        var state = CalendarAvailabilityResolver.Resolve([new CalendarEvent(now.AddMinutes(-1), now.AddMinutes(1), CalendarAvailability.NotSupported)], now);
         Assert.Equal(PresenceState.Busy, state);
     }
 

@@ -2,14 +2,19 @@ using System.Globalization;
 
 namespace BusyLight.Core.Models;
 
-public sealed record OfficeHoursConfiguration(bool IsEnabled = false, int StartMinuteOfDay = 540, int EndMinuteOfDay = 1020, ISet<int>? ActiveWeekdays = null)
+public sealed record OfficeHoursConfiguration(
+    bool IsEnabled = false,
+    int StartMinuteOfDay = 540,
+    int EndMinuteOfDay = 1020,
+    ISet<int>? ActiveWeekdays = null)
 {
+    private static readonly string[] DayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     public static OfficeHoursConfiguration Default { get; } = new(true, 540, 1020, new HashSet<int> { 2, 3, 4, 5, 6 });
     public ISet<int> Weekdays { get; init; } = new HashSet<int>((ActiveWeekdays ?? new HashSet<int> { 2, 3, 4, 5, 6 }).Where(day => day is >= 1 and <= 7));
     public int Start { get; init; } = Math.Clamp(StartMinuteOfDay, 0, 1439);
     public int End { get; init; } = Math.Clamp(EndMinuteOfDay, 0, 1439);
 
-    public bool Contains(DateTimeOffset date, System.Globalization.Calendar? calendar = null)
+    public bool Contains(DateTimeOffset date, Calendar? calendar = null)
     {
         if (!IsEnabled) return true;
         calendar ??= CultureInfo.CurrentCulture.Calendar;
@@ -22,8 +27,9 @@ public sealed record OfficeHoursConfiguration(bool IsEnabled = false, int StartM
         var previous = weekday == 1 ? 7 : weekday - 1;
         return minute < End && Weekdays.Contains(previous);
     }
+
     public bool ContainsMinute(int minute) => !IsEnabled || Start == End || (Start < End ? minute >= Start && minute < End : minute >= Start || minute < End);
     public string ScheduleDescription => $"{WeekdayDescription()} {FormatMinute(Start)}-{FormatMinute(End)}";
     public static string FormatMinute(int minute) => $"{Math.Clamp(minute, 0, 1439) / 60:D2}:{Math.Clamp(minute, 0, 1439) % 60:D2}";
-    private string WeekdayDescription() => Weekdays.SetEquals([2, 3, 4, 5, 6]) ? "Mon-Fri" : Weekdays.SetEquals([1, 2, 3, 4, 5, 6, 7]) ? "Sun-Sat" : string.Join(',', Weekdays.Order().Select(day => new[] { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" }[day - 1]));
+    private string WeekdayDescription() => Weekdays.SetEquals([2, 3, 4, 5, 6]) ? "Mon-Fri" : Weekdays.SetEquals([1, 2, 3, 4, 5, 6, 7]) ? "Sun-Sat" : string.Join(',', Weekdays.Order().Select(day => DayNames[day - 1]));
 }

@@ -1,13 +1,15 @@
 namespace BusyLight.Core.Models;
 
-/// <summary>Portable configuration values. Storage maps these values to the documented app.* keys.</summary>
+/// <summary>Portable configuration values. Storage maps values to documented app.* keys.</summary>
 public sealed record AppConfiguration
 {
     public const int MinimumWledHttpTimeout = 2500;
     public PresenceState PresenceState { get; init; } = PresenceState.Available;
     public string DeviceNetworkAddress { get; init; } = "";
     public IReadOnlyList<string> DeviceNetworkAddresses { get; init; } = [];
+#pragma warning disable CA1822 // Exposed per instance to mirror the cross-platform configuration contract.
     public int DeviceNetworkPort => 80;
+#pragma warning restore CA1822
     public int WledPresetAvailable { get; init; } = 1;
     public int WledPresetTentative { get; init; } = 2;
     public int WledPresetBusy { get; init; } = 3;
@@ -25,5 +27,15 @@ public sealed record AppConfiguration
     public bool MeetingDetectionEnabled { get; init; } = true;
     public int MeetingConfidenceThreshold { get; init; } = 3;
     public double MeetingPollIntervalSeconds { get; init; } = 3;
-    public int PresetFor(PresenceState state) => state switch { PresenceState.Available => WledPresetAvailable, PresenceState.Tentative => WledPresetTentative, PresenceState.Busy => WledPresetBusy, PresenceState.Away => WledPresetAway, PresenceState.Unknown => WledPresetUnknown, PresenceState.Off => WledPresetOff, _ => throw new ArgumentOutOfRangeException(nameof(state)) };
+
+    public int PresetFor(PresenceState state) => state switch
+    {
+        PresenceState.Available => WledPresetAvailable,
+        PresenceState.Tentative => WledPresetTentative,
+        PresenceState.Busy => WledPresetBusy,
+        PresenceState.Away => WledPresetAway,
+        PresenceState.Unknown => WledPresetUnknown,
+        PresenceState.Off => WledPresetOff,
+        _ => throw new ArgumentOutOfRangeException(nameof(state)),
+    };
 }
