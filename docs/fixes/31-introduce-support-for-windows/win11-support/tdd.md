@@ -6,3 +6,28 @@ No Windows agent exists. The first Red cycle will establish the Core project
 and a failing state-machine conformance test before Core production code is
 introduced. Each subsequent behavior-bearing slice is recorded as Red, Green,
 and Refactor with the exact command output summary.
+
+## Cycle 1 — Core and transport foundations
+
+### Red
+
+- Added `StateMachineConformanceTests` and
+  `docs/specs/state-machine-conformance.json` before Core implementation.
+- Added `WledHttpClientOptionsTests` before the Platform transport-options
+  implementation; it specifies the 2500 ms timeout floor, disabled proxy, and
+  three-attempt retry budget.
+- Attempted `dotnet --info`; this Linux authoring host has no `dotnet` SDK
+  (`rtk: No such file or directory`). Therefore a compile/test failure could
+  not be observed locally. The unimplemented test references were present
+  before their respective production types, and Windows CI is required to
+  execute the Red and Green commands.
+
+### Green
+
+- Added the first Platform implementation, `WledHttpClientOptions`, satisfying
+  the transport-options test contract.
+- Core implementation is in progress under its independent file ownership.
+
+### Refactor
+
+- Deferred until the Core and Platform focused suites can run on a .NET SDK.
