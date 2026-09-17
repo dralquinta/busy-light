@@ -26,3 +26,7 @@ has been repaired after Windows CI reported the missing forwarded assembly.
 Windows CI run `35177667095` exposed the `CS1069` dependency failure. A new
 Windows CI run is required to validate the package-reference remediation;
 local .NET execution is unavailable on the authoring host.
+
+Windows CI run `35177825273` subsequently passed after that remediation. The
+next run will validate agent-host system event integration and full known-key
+configuration round-tripping.

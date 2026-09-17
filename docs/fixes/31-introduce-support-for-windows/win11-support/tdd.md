@@ -85,3 +85,43 @@ and Refactor with the exact command output summary.
 
 - Local .NET validation remains unavailable on this Linux host. The next
   pushed Windows CI run is the authoritative build and test check.
+
+## Cycle 4 — Agent-host system presence integration
+
+### Red
+
+- Added `AgentHostTests` before the host exists. The tests specify conversion
+  of native away/return signals into `SystemAway`/`SystemReturned`, tray text
+  updates, and post-disposal unsubscription.
+
+### Green
+
+- Added `AgentHost` and its `ISystemPresenceSource` boundary. It owns the
+  state machine, starts/stops the native source, and maps its boolean signal
+  to the matching state events.
+
+### Refactor and validation
+
+- Kept the platform event source behind a tiny interface so the integration is
+  deterministic in xUnit. Local execution is unavailable; the next Windows CI
+  run will run the new agent tests.
+
+## Cycle 5 — Full known-configuration persistence
+
+### Red
+
+- Added `SaveThenLoad_PreservesAllDocumentedConfigurationValues` before
+  expanding the JSON DTO. It exercises device addresses, all WLED controls,
+  override/stabilization values, meeting values, startup state, and office
+  hours.
+
+### Green
+
+- Expanded the versioned configuration document to round-trip those known
+  values while retaining the existing atomic same-directory replacement.
+
+### Refactor and validation
+
+- The DTO remains explicit and stable-keyed rather than serializing the domain
+  record directly. Unknown-key preservation and debounced writes remain open
+  requirements, recorded in traceability.
