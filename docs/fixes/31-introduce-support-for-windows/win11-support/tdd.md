@@ -33,3 +33,10 @@ and Refactor with the exact command output summary.
 ### Refactor
 
 - Deferred until the Core and Platform focused suites can run on a .NET SDK.
+
+### Broader validation
+
+- `swift test --package-path macos-agent` is also unavailable on this host
+  (`rtk: No such file or directory`). The new Windows CI workflow installs the
+  .NET 8 SDK and runs restore, build, and the full solution tests on
+  `windows-latest`.
