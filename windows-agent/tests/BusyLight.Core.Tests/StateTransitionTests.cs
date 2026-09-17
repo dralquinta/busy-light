@@ -6,7 +6,7 @@ namespace BusyLight.Core.Tests;
 public sealed class StateTransitionTests
 {
     [Theory]
-    [InlineData(StateSource.Calendar, StateSource.Manual, OperatingMode.Manual, false, "manual-override-active")]
+    [InlineData(StateSource.Manual, StateSource.Calendar, OperatingMode.Manual, false, "manual-override-active")]
     [InlineData(StateSource.Calendar, StateSource.System, OperatingMode.Auto, true, null)]
     [InlineData(StateSource.System, StateSource.Calendar, OperatingMode.Auto, false, "insufficient-priority")]
     public void IsAllowed_UsesSwiftParityGuards(StateSource current, StateSource requested, OperatingMode mode, bool expectedAllowed, string? expectedReason)
