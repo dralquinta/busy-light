@@ -30,3 +30,12 @@ local .NET execution is unavailable on the authoring host.
 Windows CI run `35177825273` subsequently passed after that remediation. The
 next run will validate agent-host system event integration and full known-key
 configuration round-tripping.
+
+Windows CI run `35178070818` found an analyzer violation in the new host
+interface. The interface member has been renamed to a language-neutral name;
+the next CI run is pending.
+
+Native global hotkey registration, dispatch, failed-registration reporting,
+and disposal are now implemented behind an injectable Win32 boundary. It still
+needs Windows CI validation and connection from hotkey commands to the agent
+host's manual overrides.

@@ -125,3 +125,38 @@ and Refactor with the exact command output summary.
 - The DTO remains explicit and stable-keyed rather than serializing the domain
   record directly. Unknown-key preservation and debounced writes remain open
   requirements, recorded in traceability.
+
+## Cycle 6 — Agent host analyzer remediation
+
+### Red
+
+- Windows CI run `35178070818` failed the Release build with `CA1716` because
+  `ISystemPresenceSource.Stop()` uses a reserved language keyword as an
+  interface member.
+
+### Green
+
+- Renamed the boundary operation and its test fake to `StopMonitoring()`.
+
+### Validation
+
+- The follow-up Windows CI run will validate this analyzer-only correction.
+
+## Cycle 7 — Native global hotkeys
+
+### Red
+
+- Added `GlobalHotkeyManagerTests` before the native implementation. They
+  specify the six Ctrl+Alt+1–6 commands, `MOD_NOREPEAT`, independent failed
+  registration reporting, `WM_HOTKEY` routing, and cleanup of successful
+  registrations.
+
+### Green
+
+- Added a message-only Win32 window and `RegisterHotKey`/`UnregisterHotKey`
+  adapter behind an injectable registration interface.
+
+### Refactor and validation
+
+- The registration boundary keeps the Win32 calls testable without a desktop
+  session. Local .NET execution is unavailable; Windows CI remains required.

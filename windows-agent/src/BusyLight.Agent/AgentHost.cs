@@ -42,7 +42,7 @@ public sealed class AgentHost : IDisposable
         if (_started)
         {
             _systemPresence.PresenceChanged -= OnPresenceChanged;
-            _systemPresence.Stop();
+            _systemPresence.StopMonitoring();
         }
         _stateMachine.OnStateChanged = null;
     }
@@ -53,5 +53,5 @@ public interface ISystemPresenceSource
 {
     event Action<bool>? PresenceChanged;
     void Start();
-    void Stop();
+    void StopMonitoring();
 }
