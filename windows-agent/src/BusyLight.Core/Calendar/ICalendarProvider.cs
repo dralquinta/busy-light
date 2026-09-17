@@ -5,6 +5,6 @@ public interface ICalendarProvider
 {
     Task<IReadOnlyList<CalendarEvent>> GetEventsAsync(
         DateTimeOffset from,
-        DateTimeOffset end,
+        DateTimeOffset windowEnd,
         CancellationToken cancellationToken = default);
 }
